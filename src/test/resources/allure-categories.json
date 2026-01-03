@@ -1,0 +1,20 @@
+[
+  {
+    "name": "Dev Site A Failures",
+    "matchedLabels": [
+      { "name": "operator", "value": "dev-a" }
+    ]
+  },
+  {
+    "name": "Demo Failures",
+    "matchedLabels": [
+      { "name": "operator", "value": "demo" }
+    ]
+  },
+  {
+    "name": "Flaky Tests",
+    "matchedLabels": [
+      { "name": "flaky", "value": "true" }
+    ]
+  }
+]

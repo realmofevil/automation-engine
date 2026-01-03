@@ -1,0 +1,54 @@
+suite:
+  name: dev-suite
+  environment: DEV
+  operators:
+    - name: OP_A
+      desktop:
+        domain: https://dev-a.example.com
+      mobile:
+        domain: https://m-dev-a.example.com
+      parallelism: 2
+      routes:
+        basePath: /api
+      auth:
+        strategies:
+          - type: token
+      accounts:
+        - username: dXNlcjE=
+          password: cGFzc3dvcmQx
+      database:
+        driver: ORACLE
+        url: jdbc:oracle:thin:@dev-oracle:1521/DB
+        username: dXNlcjE=
+        password: cGFzc3dvcmQx
+
+    - name: demo
+      desktop:
+        domain: https://demo.realmofevil.dev
+      mobile:
+        domain: https://m.demo.realmofevil.dev
+      parallelism: 8
+      routes:
+        basePath: /api
+        newSessionEndpoint: /auth/login
+        apiV2Endpoint: /api-v2
+      auth:
+        strategies:
+          - type: token
+          - type: session
+        login:
+          endpoint: /auth/login
+          method: POST
+          tokenField: access_token
+          sessionCookie: JSESSIONID
+          sessionHeader: X-SESSION-ID
+      accounts:
+        - username: dXNlcjE=
+          password: cGFzc3dvcmQx
+        - username: dXNlcjI=
+          password: cGFzc3dvcmQy
+      database:
+        driver: POSTGRES
+        url: jdbc:postgresql://dev-postgres:5432/db
+        username: dXNlcjI=
+        password: cGFzc3dvcmQy
