@@ -5,6 +5,6 @@ import java.lang.annotation.*;
 @Retention(RetentionPolicy.RUNTIME)
 @Target({ ElementType.METHOD, ElementType.TYPE })
 public @interface Flaky {
-    int retries() default 2;
+    int retries() default 2; // TODO: Could be configurable
     String reason() default "Known instability";
 }

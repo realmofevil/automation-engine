@@ -19,7 +19,7 @@ import java.util.concurrent.TimeoutException;
 public class RabbitMqClient implements AutoCloseable {
 
     private static final Logger LOG = LoggerFactory.getLogger(RabbitMqClient.class);
-    
+
     private final Connection connection;
     private final Channel channel;
     private final ObjectMapper mapper;
@@ -34,9 +34,11 @@ public class RabbitMqClient implements AutoCloseable {
 
         ConnectionFactory factory = new ConnectionFactory();
         factory.setHost(config.host());
-        if (config.port() > 0) factory.setPort(config.port());
-        if (config.virtualHost() != null) factory.setVirtualHost(config.virtualHost());
-        
+        if (config.port() > 0)
+            factory.setPort(config.port());
+        if (config.virtualHost() != null)
+            factory.setVirtualHost(config.virtualHost());
+
         factory.setUsername(config.username().plainText());
         factory.setPassword(config.password().plainText());
         factory.setAutomaticRecoveryEnabled(true);
@@ -58,10 +60,10 @@ public class RabbitMqClient implements AutoCloseable {
         try {
             byte[] body = mapper.writeValueAsBytes(message);
             channel.basicPublish(exchange, routingKey, null, body);
-            
+
             StepReporter.info("Published RabbitMQ Message to '" + exchange + "' : '" + routingKey + "'");
             StepReporter.attachJson("RabbitMQ Payload", new String(body));
-            
+
         } catch (IOException e) {
             throw new RuntimeException("Failed to publish message to RabbitMQ", e);
         }
@@ -70,13 +72,15 @@ public class RabbitMqClient implements AutoCloseable {
     @Override
     public void close() {
         try {
-            if (channel != null && channel.isOpen()) channel.close();
-            if (connection != null && connection.isOpen()) connection.close();
+            if (channel != null && channel.isOpen())
+                channel.close();
+            if (connection != null && connection.isOpen())
+                connection.close();
         } catch (Exception e) {
             LOG.warn("Error closing RabbitMQ connection", e);
         }
     }
-    
+
     public boolean isConfigured() {
         return channel != null;
     }

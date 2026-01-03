@@ -17,22 +17,27 @@ public class AuthManager {
     }
 
     /**
-     * Authenticates the context for the requested user alias.
-     * Executes the chain of authentication definitions configured in YAML.
+     * Authenticates using a specific alias (e.g. "vip") without leasing from pool.
      */
     public void ensureAuthenticated(String primaryAccountAlias) {
-        OperatorConfig config = context.config();
-        
         OperatorConfig.ApiAccount primaryAccount = resolveAccount(primaryAccountAlias);
+        authenticateContext(primaryAccount);
+    }
 
-        context.auth().setCurrentUser(primaryAccount.username().plainText());
-        context.auth().setPassword(primaryAccount.password().plainText());
+    /**
+     * Logic used by both ensureAuthenticated (Specific) and acquireAccount (Pool).
+     */
+    private void authenticateContext(OperatorConfig.ApiAccount account) {
+        OperatorConfig config = context.config();
 
-        LOG.info("Initializing authentication for operator '{}' as user '{}'", config.id(), primaryAccountAlias);
+        context.auth().setCurrentUser(account.username().plainText());
+        context.auth().setPassword(account.password().plainText());
+
+        LOG.info("Initializing authentication for operator '{}' as user '{}'", config.id(), account.username());
 
         if (config.auth() != null) {
             for (OperatorConfig.AuthDefinition def : config.auth()) {
-                OperatorConfig.ApiAccount stepAccount = primaryAccount;
+                OperatorConfig.ApiAccount stepAccount = account;
 
                 if (def.useAccount() != null && !def.useAccount().isBlank()) {
                     stepAccount = resolveAccount(def.useAccount());
@@ -43,25 +48,17 @@ public class AuthManager {
         }
     }
 
-    private OperatorConfig.ApiAccount resolveAccount(String alias) {
-        OperatorConfig.ApiAccount account = context.config().accounts().get(alias);
-        if (account == null) {
-            throw new IllegalArgumentException(
-                "Account alias '" + alias + "' not found in operator config '" + context.config().id() + "'"
-            );
-        }
-        return account;
-    }
-
+    /**
+     * Applies only transport-layer authentication (e.g. Basic Auth) without session/login.
+     * Used for tests that do not require user-level auth.
+     */
     public void applyTransportAuthOnly() {
         OperatorConfig config = context.config();
-        
+
         if (config.auth() != null) {
             for (OperatorConfig.AuthDefinition def : config.auth()) {
-                // Only apply strategies that specify a 'useAccount' (Transport Layer)
                 if (def.useAccount() != null) {
                     OperatorConfig.ApiAccount transportAcc = resolveAccount(def.useAccount());
-
                     context.auth().setTransportUser(transportAcc.username().plainText());
                     context.auth().setTransportPassword(transportAcc.password().plainText());
                 }
@@ -71,20 +68,20 @@ public class AuthManager {
 
     /**
      * Called by ApiClient when a 401 is encountered.
-     * Invalidates the current session and re-executes the auth strategy 
+     * Invalidates the current session and re-executes the auth strategy
      * for the currently leased account.
      */
     public void reauthenticate() {
         OperatorConfig.ApiAccount currentAccount = context.getLeasedAccount();
-        
+
         // If no account is leased, it might be a Public test or Transport-only test.
         if (currentAccount == null) {
             LOG.warn("Received 401 but no user account is leased. Cannot re-authenticate.");
             return;
         }
 
-        LOG.info("Session expired for user '{}'. Refreshing authentication...", 
-                 currentAccount.username().plainText());
+        LOG.info("Session expired for user '{}'. Refreshing authentication...",
+                currentAccount.username().plainText());
 
         context.auth().invalidate();
 
@@ -102,31 +99,32 @@ public class AuthManager {
                     loginClient.login(account, def);
                 }
                 break;
-                
+
             case BASIC_HEADER:
             case BASIC_URL:
-                // For Basic Auth, we might need to store these specific credentials 
+                // For Basic Auth, we might need to store these specific credentials
                 // if they differ from the primary user.
                 // ApiClient reads user/pass from AuthSession.
-                // If Basic Auth uses a different user (e.g. Proxy), we handle it by 
-                // storing it in a dedicated "System Credentials" slot in AuthSession 
+                // If Basic Auth uses a different user (e.g. Proxy), we handle it by
+                // storing it in a dedicated "System Credentials" slot in AuthSession
                 // or updating ApiClient to handle multiple credential sets.
-                
-                // If useAccount is set, we assume these are the 
+
+                // If useAccount is set, we assume these are the
                 // credentials needed for the transport layer (Basic Auth).
                 if (def.useAccount() != null) {
                     context.auth().setTransportUser(account.username().plainText());
                     context.auth().setTransportPassword(account.password().plainText());
                 }
                 break;
-                
+
             case SESSION_COOKIE:
-                 break;
+                break;
         }
     }
 
     /**
      * Called by Test Lifecycle @BeforeEach
+     * 
      * @param requestedAlias specific alias (e.g. "vip") or null for "any".
      */
     public void acquireAccount(String requestedAlias) {
@@ -146,8 +144,22 @@ public class AuthManager {
     public void releaseAccount() {
         OperatorConfig.ApiAccount current = context.getLeasedAccount();
         if (current != null) {
+            // Optional: Logout here if "Clean Session" is required
+            // loginClient.logout(current); BUT TESTS SHOULD BE AGN
+            // OSTIC TO THE CONTEXT AND NOT CARE ABOUT AUTH STATE, THIS IS INFRASTRUCTURE
+
             context.getAccountPool().release(current);
             context.setLeasedAccount(null);
         }
+    }
+
+    private OperatorConfig.ApiAccount resolveAccount(String alias) {
+        OperatorConfig.ApiAccount account = context.config().accounts().get(alias);
+        if (account == null) {
+            throw new IllegalArgumentException(
+                "Account alias '" + alias + "' not found in operator config '" + context.config().id() + "'"
+            );
+        }
+        return account;
     }
 }

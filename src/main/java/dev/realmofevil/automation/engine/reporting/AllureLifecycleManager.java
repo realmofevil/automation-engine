@@ -21,7 +21,8 @@ public class AllureLifecycleManager {
                 }
                 Files.walk(HISTORY).filter(Files::isRegularFile).forEach(src -> {
                     try {
-                        Files.copy(src, RESULTS.resolve("history").resolve(HISTORY.relativize(src)), StandardCopyOption.REPLACE_EXISTING);
+                        Files.copy(src, RESULTS.resolve("history").resolve(HISTORY.relativize(src)),
+                                StandardCopyOption.REPLACE_EXISTING);
                     } catch (IOException e) {
                         StepReporter.warn("Failed to restore history file: " + src);
                     }
@@ -33,7 +34,7 @@ public class AllureLifecycleManager {
     }
 
     public static void saveHistory() {
-        // usually handled by the CI pipeline (mvn allure:report), 
+        // usually handled by the CI pipeline (mvn allure:report),
         // but if running locally, we can copy target/site/allure-maven-plugin/history back to allure-history
         // and best left to the CI artifacts.
     }
@@ -45,7 +46,7 @@ public class AllureLifecycleManager {
         props.setProperty("Java Version", System.getProperty("java.version"));
 
         StringBuilder ops = new StringBuilder();
-        for(OperatorConfig op : env.operators()) {
+        for (OperatorConfig op : env.operators()) {
             ops.append(op.id()).append(", ");
         }
         props.setProperty("Operators", ops.toString());

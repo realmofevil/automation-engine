@@ -7,10 +7,8 @@ import dev.realmofevil.automation.engine.config.YamlSupport;
 import dev.realmofevil.automation.engine.routing.RouteCatalog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yaml.snakeyaml.Yaml;
 
 import java.io.InputStream;
-import java.net.URI;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -60,7 +58,6 @@ public final class ConfigLoader {
         Map<String, Object> raw = loadInternal(path, Map.class);
         Map<String, String> rawRoutes = (Map<String, String>) raw.get("routes");
         return new RouteCatalog(rawRoutes);
-        // return new RouteCatalog((Map<String, String>) raw.get("routes"));
     }
 
     private static <T> T loadInternal(String path, Class<T> type) {
@@ -86,8 +83,7 @@ public final class ConfigLoader {
             specific.rabbit() != null ? specific.rabbit() : defaults.rabbit(),
             specific.routeCatalog() != null ? specific.routeCatalog() : defaults.routeCatalog(),
             specific.parallelism() > 0 ? specific.parallelism() : defaults.parallelism(),
-            (specific.auth() != null && !specific.auth().isEmpty()) ? specific.auth() : defaults.auth()
-        );
+            (specific.auth() != null && !specific.auth().isEmpty()) ? specific.auth() : defaults.auth());
     }
 
     /**
@@ -101,7 +97,7 @@ public final class ConfigLoader {
 
         String dKey = "operator." + op.id() + ".domain.desktop";
         String desktop = System.getProperty(dKey);
-        
+
         OperatorConfig.OperatorDomains domains = op.domains();
         if (desktop != null) {
             domains = new OperatorConfig.OperatorDomains(desktop, op.domains().mobile());
@@ -117,7 +113,6 @@ public final class ConfigLoader {
             op.rabbit(),
             op.routeCatalog(),
             parallelism,
-            op.auth()
-        );
+            op.auth());
     }
 }

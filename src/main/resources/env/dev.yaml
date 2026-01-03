@@ -1,3 +1,4 @@
+# read by OperatorConfigLoader / OperatorConfig
 environment:
   name: dev
 
@@ -36,3 +37,53 @@ environment:
       db: oracle-dev.yaml
       execution:
         threads: 2
+
+
+
+
+
+name: DEV
+operators:
+  - id: "demo_site"
+    environment: "dev"
+    domains:
+      desktop: "https://demo.website.com"
+      mobile: "https://m.demo.website.com"
+    
+    # Composable Authentication: Uses URL-based Basic Auth AND a Login Token
+    auth:
+      - type: "BASIC_URL" # Injects User:Pass into URL
+      - type: "LOGIN_TOKEN"
+        loginRoute: "user.login"
+        # INSTRUCTION FOR LOGIN CLIENT (Extraction)
+        tokenSource: "RESPONSE_HEADER"
+        tokenField: "X-SessionID" # The header key in the login response
+        # INSTRUCTION FOR API CLIENT (Injection)
+        tokenHeader: "X-SessionID" # The header key to send in subsequent requests
+
+    accounts:
+      default:
+        username: "admin"
+        # "password123" base64 encoded > cGFzc3dvcmQxMjM=
+        password: "cGFzc3dvcmQxMjM="
+    db:
+      type: "postgresql"
+      jdbcUrl: "jdbc:postgresql://10.0.0.5:5432/db"
+      username: "dbuser"
+      password: "dbpass"
+    routeCatalog: "payment.yaml"
+    parallelism: 4
+
+  - id: "another_site"
+    environment: "dev"
+    domains:
+      desktop: "https://dev.another_site.com"
+      mobile: "https://m.dev.another_site.com"
+    # ... other configs
+
+
+
+
+name: QA
+defaults:
+  # ... default settings ...

@@ -23,9 +23,8 @@ public final class ApiRequest {
 
     public static final class Builder {
 
-        private HttpRequest.Builder builder =
-                HttpRequest.newBuilder()
-                        .timeout(Duration.ofSeconds(30));
+        private HttpRequest.Builder builder = HttpRequest.newBuilder()
+                .timeout(Duration.ofSeconds(30));
 
         public Builder uri(URI uri) {
             builder.uri(uri);
@@ -34,8 +33,7 @@ public final class ApiRequest {
 
         public Builder method(
                 String method,
-                HttpRequest.BodyPublisher body
-        ) {
+                HttpRequest.BodyPublisher body) {
             builder.method(method, body);
             return this;
         }

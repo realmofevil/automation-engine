@@ -13,11 +13,12 @@ import java.util.Objects;
  * </p>
  */
 public final class Secret {
-    
+
     private final String rawValue;
 
     /**
      * Constructor used by SnakeYAML.
+     * 
      * @param value The raw value from the YAML file (usually Base64).
      */
     public Secret(String value) {
@@ -33,8 +34,10 @@ public final class Secret {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o)
+            return true;
+        if (o == null || getClass() != o.getClass())
+            return false;
         Secret secret = (Secret) o;
         return Objects.equals(rawValue, secret.rawValue);
     }

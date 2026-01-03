@@ -68,9 +68,15 @@ public class ApiRequestSpec {
 
     private Response execute(String method, Object body) {
         try {
-
             RouteDefinition routeDef = context.routes().get(routeKey);
-            
+
+            /**
+            if (!"ANY".equals(routeDef.method()) && !routeDef.method().equalsIgnoreCase(method)) {
+                throw new IllegalStateException(
+                        String.format("Route '%s' enforces method %s but test requested %s",
+                                routeKey, routeDef.method(), method));
+            }
+
             // --- SERVICE RESOLUTION ---
             // If the route definition specifies a service (e.g. "payment"), use that host.
             // Otherwise default to Desktop.
@@ -85,39 +91,57 @@ public class ApiRequestSpec {
             } else {
                 baseUri = context.config().domains().desktopUri();
             }
+            **/
+            URI baseUri = context.config().domains().desktopUri(); // Default
+            
+            Map<String, String> services = context.config().services();
+            if (services != null) {
+                // Iterate services to find a matching prefix in the route key
+                // Example: Config has "payment" -> "http://pay-api". RouteKey is "payment.lock"
+                for (String serviceName : services.keySet()) {
+                    if (routeKey.startsWith(serviceName + ".")) {
+                        baseUri = context.config().getServiceUri(serviceName);
+                        break;
+                    }
+                }
+            }
 
             String basePath = baseUri.getPath();
-            if (!basePath.endsWith("/")) basePath += "/";
-            
+            if (!basePath.endsWith("/"))
+                basePath += "/";
+
             String routePath = routeDef.path();
-            if (routePath.startsWith("/")) routePath = routePath.substring(1);
-            
+            if (routePath.startsWith("/"))
+                routePath = routePath.substring(1);
+
             String fullPath = basePath + routePath;
 
-            // String basePath = baseUri.getPath().endsWith("/") ? baseUri.getPath() : baseUri.getPath() + "/";
-            // String routePath = routeDef.path().startsWith("/") ? routeDef.path().substring(1) : routeDef.path();
+            // String basePath = baseUri.getPath().endsWith("/") ? baseUri.getPath() :
+            // baseUri.getPath() + "/";
+            // String routePath = routeDef.path().startsWith("/") ?
+            // routeDef.path().substring(1) : routeDef.path();
             // URI fullUri = baseUri.resolve(basePath + routePath);
 
             URI fullUri = new URI(
-                baseUri.getScheme(), 
-                baseUri.getUserInfo(), 
-                baseUri.getHost(), 
-                baseUri.getPort(), 
-                fullPath, 
-                baseUri.getQuery(), 
-                baseUri.getFragment()
-            );
+                    baseUri.getScheme(),
+                    baseUri.getUserInfo(),
+                    baseUri.getHost(),
+                    baseUri.getPort(),
+                    fullPath,
+                    baseUri.getQuery(),
+                    baseUri.getFragment());
 
             if (!queryParams.isEmpty()) {
                 String query = queryParams.entrySet().stream()
-                        .map(e -> URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8) + "=" + 
-                                  URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
+                        .map(e -> URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8) + "=" +
+                                URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
                         .collect(Collectors.joining("&"));
-                
+
                 String existingQuery = fullUri.getQuery();
                 String newQuery = existingQuery == null ? query : existingQuery + "&" + query;
-                
-                fullUri = new URI(fullUri.getScheme(), fullUri.getUserInfo(), fullUri.getHost(), fullUri.getPort(), fullUri.getPath(), newQuery, fullUri.getFragment());
+
+                fullUri = new URI(fullUri.getScheme(), fullUri.getUserInfo(), fullUri.getHost(), fullUri.getPort(),
+                        fullUri.getPath(), newQuery, fullUri.getFragment());
             }
 
             HttpRequest.Builder builder = HttpRequest.newBuilder().uri(fullUri);
@@ -147,17 +171,18 @@ public class ApiRequestSpec {
             }
 
             HttpClient client = apiClient.getNativeClient(followRedirects);
-            HttpResponse<String> httpRes = client.send(authenticatedRequest.httpRequest(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> httpRes = client.send(authenticatedRequest.httpRequest(),
+                    HttpResponse.BodyHandlers.ofString());
 
             if (httpRes.statusCode() == 401 && !isRetry) {
                 StepReporter.warn("401 Unauthorized. Refreshing token...");
                 context.authManager().reauthenticate();
-                this.isRetry = true; 
+                this.isRetry = true;
                 return execute(method, body);
             }
 
             StepReporter.attachJson("Response " + httpRes.statusCode(), httpRes.body());
-            
+
             return new Response(httpRes, mapper);
 
         } catch (Exception e) {

@@ -1,5 +1,8 @@
 package dev.realmofevil.automation.launcher;
 
+import dev.realmofevil.automation.engine.bootstrap.ConfigLoader;
+import dev.realmofevil.automation.engine.config.EnvironmentConfig;
+import dev.realmofevil.automation.engine.reporting.AllureLifecycleManager;
 import dev.realmofevil.automation.engine.reporting.StepReporter;
 import org.junit.platform.launcher.Launcher;
 import org.junit.platform.launcher.LauncherDiscoveryRequest;
@@ -37,6 +40,15 @@ public class AutomationLauncher {
         if (System.getProperty("suite") == null) {
             System.err.println("ERROR: Missing required argument: --suite");
             System.exit(1);
+        }
+
+        AllureLifecycleManager.restoreHistory();
+        try {
+            String envName = System.getProperty("env");
+            EnvironmentConfig env = ConfigLoader.loadEnv(envName);
+            AllureLifecycleManager.writeEnvironment(env, System.getProperty("suite"));
+        } catch (Exception e) {
+            StepReporter.warn("Could not write Allure environment info: " + e.getMessage());
         }
 
         launchJUnit();

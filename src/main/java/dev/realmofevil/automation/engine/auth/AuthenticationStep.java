@@ -7,6 +7,5 @@ public interface AuthenticationStep {
 
     ApiRequest apply(
             ExecutionContext context,
-            ApiRequest request
-    );
+            ApiRequest request);
 }

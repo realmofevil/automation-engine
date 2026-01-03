@@ -8,6 +8,20 @@ import org.junit.jupiter.api.Test;
 public class UserTest {
 
     @Test
+    void verifyProfile() {
+        var ctx = ContextHolder.get();
+
+        ctx.authManager().acquireAccount(null);
+
+        var response = ctx.api()
+                .route("user.profile")
+                .query("details", "true")
+                .get();
+
+        response.assertOk();
+    }
+
+    @Test
     void verifyUserProfile() {
         var ctx = ContextHolder.get();
         ctx.authManager().ensureAuthenticated("default");
@@ -24,14 +38,15 @@ public class UserTest {
         Assertions.assertNotNull(profile.email());
 
         var dbUsers = ctx.db().query(
-            "SELECT email FROM users WHERE username = ?", 
-            rs -> rs.getString("email"),
-            profile.username()
+                "SELECT email FROM users WHERE username = ?",
+                rs -> rs.getString("email"),
+                profile.username()
         );
-        
+
         Assertions.assertFalse(dbUsers.isEmpty());
         Assertions.assertEquals(profile.email(), dbUsers.get(0));
     }
-    
-    record UserProfile(String username, String email) {}
+
+    record UserProfile(String username, String email) {
+    }
 }

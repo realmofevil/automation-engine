@@ -17,7 +17,7 @@ public final class TokenAuthenticationStep implements AuthenticationStep {
             return request;
         }
 
-        String headerName = "Authorization"; 
+        String headerName = "Authorization";
         String headerValue = "Bearer " + token;
 
         if (context.config().auth() != null) {
@@ -41,8 +41,7 @@ public final class TokenAuthenticationStep implements AuthenticationStep {
                 .headers(Map.of(headerName, headerValue))
                 .method(
                         original.method(),
-                        original.bodyPublisher().orElse(HttpRequest.BodyPublishers.noBody())
-                )
+                        original.bodyPublisher().orElse(HttpRequest.BodyPublishers.noBody()))
                 .build();
     }
 }

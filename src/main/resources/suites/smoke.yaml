@@ -10,7 +10,16 @@ suite:
 
   tests:
     - class: dev.realmofevil.automation.tests.common.UserBalanceTest
-      tags: [payments]
+      tags: [payment]
 
     - class: dev.realmofevil.automation.tests.DynamicSmokeTest
       tags: [api, smoke]
+
+
+
+
+name: "Smoke Test Suite"
+targetOperators: ["ALL"] # or ["gmail"]
+tests:
+  - className: "dev.realmofevil.automation.tests.smoke.UserBalanceTest"
+    tags: ["critical", "payment"]

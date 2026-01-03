@@ -13,6 +13,7 @@ public final class BasicAuthenticationStep implements AuthenticationStep {
 
     @Override
     public ApiRequest apply(ExecutionContext context, ApiRequest request) {
+
         String username = context.auth().getTransportUser();
         String password = context.auth().getTransportPassword();
 
@@ -31,7 +32,7 @@ public final class BasicAuthenticationStep implements AuthenticationStep {
             String userInfo = username + ":" + password;
             uriWithCreds = new URI(
                     uri.getScheme(),
-                    userInfo, // Inject here
+                    userInfo,
                     uri.getHost(),
                     uri.getPort(),
                     uri.getPath(),

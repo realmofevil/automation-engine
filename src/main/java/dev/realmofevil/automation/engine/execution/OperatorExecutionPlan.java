@@ -10,6 +10,6 @@ import java.util.List;
  * Contains the operator configuration and the specific list of tests to run.
  */
 public record OperatorExecutionPlan(
-    OperatorConfig operator,
-    List<SuiteDefinition.TestEntry> tests
-) {}
+        OperatorConfig operator,
+        List<SuiteDefinition.TestEntry> tests) {
+}

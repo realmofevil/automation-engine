@@ -4,9 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.realmofevil.automation.engine.config.OperatorConfig;
 import dev.realmofevil.automation.engine.context.ExecutionContext;
+import dev.realmofevil.automation.engine.routing.RouteDefinition;
 import io.qameta.allure.Allure;
 
 import java.net.URI;
+import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.Map;
@@ -30,41 +32,42 @@ public final class LoginClient {
     private void performLoginRequest(OperatorConfig.ApiAccount account, OperatorConfig.AuthDefinition def) {
         try {
             // looking up the login route from the route catalog if it's a key (e.g. "user.login")
-            // or use it as a direct path if it starts with "/"
+            // or use it as a direct path if it starts with "/" it's a key in routes.yaml
             String routePath = def.loginRoute();
             if (!routePath.startsWith("/")) {
-                routePath = context.routes().getPath(routePath);
+                RouteDefinition routeDef = context.routes().get(routePath);
+                routePath = routeDef.path();
             }
-
+            
             URI loginUri = context.config().domains().desktopUri().resolve(routePath);
 
             Map<String, String> credentials = Map.of(
-                    "username", account.username().plainText(),
-                    "password", account.password().plainText());
+                "username", account.username().plainText(),
+                "password", account.password().plainText()
+            );
             String jsonBody = mapper.writeValueAsString(credentials);
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(loginUri)
-                    .header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                    .build();
+                .uri(loginUri)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                .build();
 
-            HttpResponse<String> response = context.httpClient().send(request, HttpResponse.BodyHandlers.ofString());
+            HttpClient client = context.api().getNativeClient(true);
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() >= 400) {
-                throw new RuntimeException(
-                        "Login failed. Status: " + response.statusCode() + " Body: " + response.body());
+                throw new RuntimeException("Login failed. Status: " + response.statusCode() + " Body: " + response.body());
             }
 
             String token = extractToken(response, def);
-
+            
             if (token == null || token.isBlank()) {
-                throw new RuntimeException(
-                        "Auth token not found using source: " + def.tokenSource() + " and field: " + def.tokenField());
+                throw new RuntimeException("Auth token not found using source: " + def.tokenSource() + " and field: " + def.tokenField());
             }
 
             context.auth().setAuthToken(token);
-
+            
             Allure.addAttachment("Auth Token Acquired", "Token length: " + token.length());
 
         } catch (Exception e) {

@@ -23,8 +23,7 @@ public final class SessionAuthenticationStep implements AuthenticationStep {
                 .headers(Map.of("Cookie", cookieHeader))
                 .method(
                         original.method(),
-                        original.bodyPublisher().orElse(HttpRequest.BodyPublishers.noBody())
-                )
+                        original.bodyPublisher().orElse(HttpRequest.BodyPublishers.noBody()))
                 .build();
     }
 }
