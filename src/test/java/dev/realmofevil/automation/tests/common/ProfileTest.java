@@ -9,8 +9,11 @@ public class ProfileTest {
     void userProfileLoads() {
         var ctx = ContextHolder.get();
 
+        // Explicitly ensure we are logged in as the 'vip' user defined in YAML
+        // This triggers LoginClient > reads YAML > POST /login > Extracts Token > Sets Session
         ctx.authManager().ensureAuthenticated("vip");
 
+        // ApiClient automatically attaches the token from AuthSession
         var response = ctx.api().get("user.profile");
         
         response.assertOk();

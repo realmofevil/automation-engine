@@ -21,14 +21,11 @@ public final class AuthenticationChain {
      * 
      **/
 
-    public ApiRequest apply(
-            ExecutionContext context,
-            ApiRequest request) {
-        AuthContext authContext = new AuthContext();
+    public ApiRequest apply(ExecutionContext context, ApiRequest request) {
         ApiRequest current = request;
 
         for (AuthenticationStep step : steps) {
-            current = step.apply(context, current, authContext);
+            current = step.apply(context, current);
         }
         return current;
     }

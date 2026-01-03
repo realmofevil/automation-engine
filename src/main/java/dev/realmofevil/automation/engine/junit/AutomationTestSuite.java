@@ -2,7 +2,6 @@ package dev.realmofevil.automation.engine.junit;
 
 import dev.realmofevil.automation.engine.bootstrap.ConfigLoader;
 import dev.realmofevil.automation.engine.config.EnvironmentConfig;
-import dev.realmofevil.automation.engine.config.OperatorConfig;
 import dev.realmofevil.automation.engine.config.SuiteDefinition;
 import dev.realmofevil.automation.engine.execution.ExecutionPlanner;
 import dev.realmofevil.automation.engine.execution.OperatorExecutionPlan;
@@ -33,8 +32,10 @@ public class AutomationTestSuite {
         EnvironmentConfig envConfig = ConfigLoader.loadEnv(envName);
         SuiteDefinition suiteDef = ConfigLoader.loadSuite(suiteName);
 
+        // Matches the suite requirements against the available operators in the environment
         List<OperatorExecutionPlan> plans = ExecutionPlanner.plan(envConfig.operators(), suiteDef);
 
+        // Generate the Test Graph and Convert the Plans into JUnit 5 Dynamic Nodes
         return plans.stream()
                 .map(DynamicOperatorTestFactory::create);
     }

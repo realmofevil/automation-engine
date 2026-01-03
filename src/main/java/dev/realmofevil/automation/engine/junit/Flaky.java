@@ -6,4 +6,5 @@ import java.lang.annotation.*;
 @Target({ ElementType.METHOD, ElementType.TYPE })
 public @interface Flaky {
     int retries() default 2;
+    String reason() default "Known instability";
 }

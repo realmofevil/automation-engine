@@ -4,12 +4,12 @@ import dev.realmofevil.automation.engine.config.OperatorConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.time.Duration;
+// import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
+// import java.util.stream.Collectors;
 
 /**
  * Manages the lifecycle and concurrency of User Accounts.
@@ -18,13 +18,13 @@ import java.util.stream.Collectors;
 public final class AccountPool {
 
     private static final Logger LOG = LoggerFactory.getLogger(AccountPool.class);
-    
+
     private final Map<String, OperatorConfig.ApiAccount> accountConfig;
-    
+
     // Active Leases: Key = Account Alias, Value = Thread Name (for debugging)
     private final ConcurrentHashMap<String, String> activeLeases = new ConcurrentHashMap<>();
-    
-    // Fairness control: Global flag to limit concurrent users to total account count
+
+    // Fairness control: Global semaphore to limit concurrent users to total account count
     // This handles the "More Threads than Accounts" edge case by making threads wait here.
     private final Semaphore availabilitySemaphore;
 

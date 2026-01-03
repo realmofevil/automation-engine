@@ -78,7 +78,6 @@ public class ApiRequestSpec {
             // Convention: If route key starts with "payment.", look for "payment" service.
 
             URI baseUri;
-
             if (routeKey.startsWith("payment.")) {
                 baseUri = context.config().getServiceUri("payment");
             } else if (routeKey.startsWith("aux.")) {
@@ -87,10 +86,27 @@ public class ApiRequestSpec {
                 baseUri = context.config().domains().desktopUri();
             }
 
-            String basePath = baseUri.getPath().endsWith("/") ? baseUri.getPath() : baseUri.getPath() + "/";
-            String routePath = routeDef.path().startsWith("/") ? routeDef.path().substring(1) : routeDef.path();
+            String basePath = baseUri.getPath();
+            if (!basePath.endsWith("/")) basePath += "/";
+            
+            String routePath = routeDef.path();
+            if (routePath.startsWith("/")) routePath = routePath.substring(1);
+            
+            String fullPath = basePath + routePath;
 
-            URI fullUri = baseUri.resolve(basePath + routePath);
+            // String basePath = baseUri.getPath().endsWith("/") ? baseUri.getPath() : baseUri.getPath() + "/";
+            // String routePath = routeDef.path().startsWith("/") ? routeDef.path().substring(1) : routeDef.path();
+            // URI fullUri = baseUri.resolve(basePath + routePath);
+
+            URI fullUri = new URI(
+                baseUri.getScheme(), 
+                baseUri.getUserInfo(), 
+                baseUri.getHost(), 
+                baseUri.getPort(), 
+                fullPath, 
+                baseUri.getQuery(), 
+                baseUri.getFragment()
+            );
 
             if (!queryParams.isEmpty()) {
                 String query = queryParams.entrySet().stream()
@@ -101,14 +117,10 @@ public class ApiRequestSpec {
                 String existingQuery = fullUri.getQuery();
                 String newQuery = existingQuery == null ? query : existingQuery + "&" + query;
                 
-                fullUri = new URI(fullUri.getScheme(), fullUri.getAuthority(), fullUri.getPath(), newQuery, fullUri.getFragment());
+                fullUri = new URI(fullUri.getScheme(), fullUri.getUserInfo(), fullUri.getHost(), fullUri.getPort(), fullUri.getPath(), newQuery, fullUri.getFragment());
             }
 
-            HttpRequest.Builder builder = HttpRequest.newBuilder();
-
-            URI finalUri = apiClient.applyAuthentication(builder, fullUri);
-            
-            builder.uri(finalUri);
+            HttpRequest.Builder builder = HttpRequest.newBuilder().uri(fullUri);
 
             headers.forEach(builder::header);
 
@@ -122,6 +134,12 @@ public class ApiRequestSpec {
                 builder.method(method, HttpRequest.BodyPublishers.noBody());
             }
 
+            ApiRequest initialRequest = new ApiRequest(builder.build());
+
+            ApiRequest authenticatedRequest = context.authChain().apply(context, initialRequest);
+
+            URI finalUri = authenticatedRequest.httpRequest().uri();
+
             if (!isRetry) {
                 StepReporter.info(method + " " + finalUri);
             } else {
@@ -129,13 +147,13 @@ public class ApiRequestSpec {
             }
 
             HttpClient client = apiClient.getNativeClient(followRedirects);
-            HttpResponse<String> httpRes = client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> httpRes = client.send(authenticatedRequest.httpRequest(), HttpResponse.BodyHandlers.ofString());
 
             if (httpRes.statusCode() == 401 && !isRetry) {
                 StepReporter.warn("401 Unauthorized. Refreshing token...");
                 context.authManager().reauthenticate();
                 this.isRetry = true; 
-                return execute(method, body); // Recursive retry
+                return execute(method, body);
             }
 
             StepReporter.attachJson("Response " + httpRes.statusCode(), httpRes.body());

@@ -35,35 +35,36 @@ public final class LoginClient {
             if (!routePath.startsWith("/")) {
                 routePath = context.routes().getPath(routePath);
             }
-            
+
             URI loginUri = context.config().domains().desktopUri().resolve(routePath);
 
             Map<String, String> credentials = Map.of(
-                "username", account.username().plainText(),
-                "password", account.password().plainText()
-            );
+                    "username", account.username().plainText(),
+                    "password", account.password().plainText());
             String jsonBody = mapper.writeValueAsString(credentials);
 
             HttpRequest request = HttpRequest.newBuilder()
-                .uri(loginUri)
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                .build();
+                    .uri(loginUri)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                    .build();
 
             HttpResponse<String> response = context.httpClient().send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() >= 400) {
-                throw new RuntimeException("Login failed. Status: " + response.statusCode() + " Body: " + response.body());
+                throw new RuntimeException(
+                        "Login failed. Status: " + response.statusCode() + " Body: " + response.body());
             }
 
             String token = extractToken(response, def);
-            
+
             if (token == null || token.isBlank()) {
-                throw new RuntimeException("Auth token not found using source: " + def.tokenSource() + " and field: " + def.tokenField());
+                throw new RuntimeException(
+                        "Auth token not found using source: " + def.tokenSource() + " and field: " + def.tokenField());
             }
 
             context.auth().setAuthToken(token);
-            
+
             Allure.addAttachment("Auth Token Acquired", "Token length: " + token.length());
 
         } catch (Exception e) {

@@ -40,7 +40,6 @@ public final class AuthSession {
         return sb.toString();
     }
 
-    // Track which user is currently logged in
     public void setCurrentUser(String username) {
         this.username = username;
     }
