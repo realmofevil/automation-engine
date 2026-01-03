@@ -1,11 +1,11 @@
 package dev.realmofevil.automation.engine.auth;
 
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
-public final class AuthContext {
+public final class SessionState {
 
-    private final Map<String, String> values = new HashMap<>();
+    private final Map<String, String> values = new ConcurrentHashMap<>();
 
     public void put(String key, String value) {
         values.put(key, value);

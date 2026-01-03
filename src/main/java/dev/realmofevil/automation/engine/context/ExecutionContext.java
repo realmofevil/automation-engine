@@ -1,154 +1,76 @@
 package dev.realmofevil.automation.engine.context;
 
-import dev.realmofevil.automation.engine.config.EnvironmentConfig;
-import dev.realmofevil.automation.engine.config.ExecutionConfig;
-import dev.realmofevil.automation.engine.config.OperatorEndpoint;
+import dev.realmofevil.automation.engine.auth.AccountPool;
+import dev.realmofevil.automation.engine.auth.AuthenticationChain;
+import dev.realmofevil.automation.engine.db.OperatorDbPool;
+import dev.realmofevil.automation.engine.db.TransactionManager;
+import dev.realmofevil.automation.engine.execution.OperatorExecutionPlan;
+import dev.realmofevil.automation.engine.operator.OperatorConfig;
+import dev.realmofevil.automation.engine.reporting.ReportingContext;
+import dev.realmofevil.automation.engine.routing.RouteCatalog;
 
-import java.util.Map;
+import java.net.http.HttpClient;
+import java.time.Clock;
 
-/**
- * Execution context for the current test thread.
- *
- * Holds:
- *  - environment configuration
- *  - active operator
- *  - operator-specific endpoint
- *
- * Thread-safe via ThreadLocal.
- */
 public final class ExecutionContext {
 
-    private static EnvironmentConfig environmentConfig;
+    private final OperatorConfig operator;
+    private final RouteCatalog routes;
+    private final HttpClient httpClient;
+    private final Clock clock;
+    private final AccountPool accounts;
+    private final AuthenticationChain auth;
+    private final TransactionManager transactions;
+    private final ReportingContext reportingContext;
 
-    private static final ThreadLocal<String> currentOperator =
-            new ThreadLocal<>();
-
-    private static final ThreadLocal<OperatorEndpoint> currentEndpoint =
-            new ThreadLocal<>();
-
-    private static final ThreadLocal<ExecutionConfig> CTX = new ThreadLocal<>();
-
-    private ExecutionContext() {
-        // no instances
+    public ExecutionContext(
+            OperatorConfig operator,
+            RouteCatalog routes,
+            HttpClient httpClient,
+            Clock clock,
+            OperatorDbPool dbPool,
+            OperatorExecutionPlan plan
+    ) {
+        this.operator = operator;
+        this.routes = routes;
+        this.httpClient = httpClient;
+        this.clock = clock;
+        this.accounts = operator.accountPool();
+        this.auth = operator.authenticationChain();
+        this.transactions = new TransactionManager(dbPool);
+        this.reportingContext = new ReportingContext(
+                plan.environment(),
+                plan.operator().id(),
+                plan.suite().name(),
+                plan.executionId()
+        );
     }
 
-    /**
-     * Initializes the global execution context.
-     * Must be called once during bootstrap.
-     */
-    public static void init(EnvironmentConfig envConfig, String operator) {
-        environmentConfig = envConfig;
-
-        if (!"all".equalsIgnoreCase(operator)) {
-            setOperator(operator);
-        }
-    }
-
-    /**
-     * Sets the operator for the current thread.
-     */
-    public static void setOperator(String operator) {
-        Map<String, OperatorEndpoint> operators =
-                environmentConfig.operators();
-
-        OperatorEndpoint endpoint = operators.get(operator);
-
-        if (endpoint == null) {
-            throw new IllegalStateException(
-                    "Operator not found in configuration: " + operator
-            );
-        }
-
-        currentOperator.set(operator);
-        currentEndpoint.set(endpoint);
-    }
-
-    /**
-     * Stores the full execution configuration for the current thread.
-     */
-    public static void set(ExecutionConfig config) {
-        CTX.set(config);
-        // synchronize static environment for compatibility with bootstrap/init
-        environmentConfig = config.environment();
-
-        String operator = config.suite() == null ? null : config.suite().operator();
-        if (operator != null && !"all".equalsIgnoreCase(operator)) {
-            setOperator(operator);
-        }
-    }
-
-    /**
-     * Returns the current execution configuration.
-     */
-    public static ExecutionConfig get() {
-        ExecutionConfig config = CTX.get();
-        if (config == null) {
-            throw new IllegalStateException("Execution context not set for current thread");
-        }
-        return config;
-    }
-
-    /**
-     * Returns the environment configuration.
-     */
-    public static EnvironmentConfig environment() {
-        return environmentConfig;
-    }
-
-    /**
-     * Returns the current operator name.
-     */
-    public static String operator() {
-        String operator = currentOperator.get();
-        if (operator == null) {
-            throw new IllegalStateException(
-                    "Operator not set for current thread"
-            );
-        }
+    public OperatorConfig operator() {
         return operator;
     }
 
-    /**
-     * Returns the operator endpoint for the current thread.
-     */
-    public static OperatorEndpoint endpoint() {
-        OperatorEndpoint endpoint = currentEndpoint.get();
-        if (endpoint == null) {
-            throw new IllegalStateException(
-                    "Operator endpoint not set for current thread"
-            );
-        }
-        return endpoint;
+    public RouteCatalog routes() {
+        return routes;
     }
 
-    /**
-     * Clears thread-local context (important for parallel execution).
-     */
-    public static void clear() {
-        currentOperator.remove();
-        currentEndpoint.remove();
-    }
-}
-
-/**
-// Alternative simplified implementation
-package dev.realmofevil.automation.engine.context;
-
-import dev.realmofevil.automation.engine.config.ExecutionConfig;
-
-public final class ExecutionContext {
-
-    private static final ThreadLocal<ExecutionConfig> CTX = new ThreadLocal<>();
-
-    private ExecutionContext() {
+    public HttpClient httpClient() {
+        return httpClient;
     }
 
-    public static void set(ExecutionConfig config) {
-        CTX.set(config);
+    public Clock clock() {
+        return clock;
     }
 
-    public static ExecutionConfig get() {
-        return CTX.get();
+    public AccountPool accounts() {
+        return accounts;
+    }
+
+    public AuthenticationChain auth() {
+        return auth;
+    }
+
+    public TransactionManager transactions() {
+        return transactions;
     }
 }
-**/

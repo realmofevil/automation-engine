@@ -1,7 +1,0 @@
-suite:
-  environment: dev
-  platform: desktop
-  device: chrome
-  includeTags: [smoke, regression]
-  excludeTags: [wip]
-  parallelism: 8

@@ -1,120 +1,66 @@
 package dev.realmofevil.automation.engine.auth;
 
-import dev.realmofevil.automation.engine.config.AuthAccount;
-import dev.realmofevil.automation.engine.security.Base64Secrets;
-
 import java.util.List;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
-public class AccountPool {
+public final class AccountPool {
 
-    private final BlockingQueue<AuthSession> pool;
-    private final AuthSession sharedFallback;
+    private final List<AccountCredentials> accounts;
+    private final AtomicInteger cursor = new AtomicInteger(0);
+    private final Set<String> inUse = ConcurrentHashMap.newKeySet();
 
-    public AccountPool(List<AuthAccount> accounts) {
-        pool = new LinkedBlockingQueue<>();
+    private final ThreadLocal<AccountCredentials> pinned = new ThreadLocal<>();
 
-        accounts.forEach(acc -> pool.add(new AuthSession(
-                Base64Secrets.decode(acc.username()),
-                Base64Secrets.decode(acc.password()),
-                false)));
-
-        sharedFallback = pool.peek() != null
-                ? new AuthSession(
-                        pool.peek().username(),
-                        pool.peek().password(),
-                        true)
-                : null;
+    public AccountPool(List<AccountCredentials> accounts) {
+        this.accounts = List.copyOf(accounts);
     }
 
-    public AuthSession acquire(boolean dedicated) {
-        if (dedicated) {
-            AuthSession session = pool.poll();
-            if (session == null) {
-                throw new IllegalStateException(
-                        "No dedicated accounts available");
-            }
-            return session;
+    public void pin(AccountCredentials account) {
+        pinned.set(account);
+    }
+
+    public void clearPin() {
+        pinned.remove();
+    }
+
+    public AccountCredentials current() {
+        AccountCredentials pinnedAccount = pinned.get();
+        if (pinnedAccount != null) {
+            return pinnedAccount;
         }
-
-        AuthSession session = pool.poll();
-        return session != null ? session : sharedFallback;
+        return next();
     }
 
-    public void release(AuthSession session) {
-        if (session == null || session.isSharedFallback())
-            return;
-        pool.offer(session);
+    public AccountCredentials next() {
+        for (int i = 0; i < accounts.size(); i++) {
+            AccountCredentials acc = accounts.get(
+                    Math.abs(cursor.getAndIncrement())
+                            % accounts.size());
+
+            if (inUse.add(acc.id())) {
+                return acc;
+            }
+            /**
+             * TestReporter.warn(
+             * "Primary account unavailable, falling back to the next one: " + acc.id()
+             * );
+             * 
+             **/
+        }
+        throw new IllegalStateException(
+                "No free accounts available");
+    }
+
+    public void release(AccountCredentials account) {
+        inUse.remove(account.id());
+    }
+
+    public AccountCredentials byId(String id) {
+        return accounts.stream()
+                .filter(a -> a.id().equals(id))
+                .findFirst()
+                .orElseThrow();
     }
 }
-
-/**
- * public class AccountPool {
- * 
- * private final BlockingQueue<AuthSession> pool;
- * private final AuthSession sharedFallbackSession;
- * 
- * public AccountPool(List<AuthAccount> accounts) {
- * pool = new LinkedBlockingQueue<>();
- * 
- * accounts.forEach(acc -> pool.add(new AuthSession(
- * Base64Secrets.decode(acc.username()),
- * Base64Secrets.decode(acc.password()),
- * false)));
- * 
- * // Shared fallback (uses first account or empty)
- * if (!accounts.isEmpty()) {
- * AuthAccount first = accounts.get(0);
- * sharedFallbackSession = new AuthSession(
- * Base64Secrets.decode(first.username()),
- * Base64Secrets.decode(first.password()),
- * true);
- * } else {
- * sharedFallbackSession = null;
- * }
- * }
- * 
- * public AuthSession acquire() {
- * AuthSession session = pool.poll();
- * return session != null ? session : sharedFallbackSession;
- * }
- * 
- * public void release(AuthSession session) {
- * if (session == null)
- * return;
- * 
- * // Do NOT return shared fallback to pool
- * if (!session.isSharedFallback()) {
- * pool.offer(session);
- * }
- * }
- * }
- **/
-
-/**
- * public class AccountPool {
- * 
- * private final BlockingQueue<AuthSession> pool;
- * 
- * public AccountPool(Iterable<AuthAccount> accounts) {
- * pool = new LinkedBlockingQueue<>();
- * 
- * accounts.forEach(acc -> pool.add(new AuthSession(
- * Base64Secrets.decode(acc.username()),
- * Base64Secrets.decode(acc.password()))));
- * }
- * 
- * public AuthSession borrow() {
- * try {
- * return pool.take();
- * } catch (InterruptedException e) {
- * throw new RuntimeException(e);
- * }
- * }
- * 
- * public void release(AuthSession session) {
- * pool.offer(session);
- * }
- * }
- **/

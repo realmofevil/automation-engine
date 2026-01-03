@@ -1,0 +1,38 @@
+environment:
+  name: dev
+
+  operators:
+    - id: site-a
+      domains:
+        desktop: https://dev.site-a.com
+        mobile: https://m.dev.site-a.com
+      routes: common-routes.yaml
+      auth: auth-default.yaml
+      db: postgres-dev.yaml
+      execution:
+        threads: 4
+      apiAccounts:
+        default:
+          username: api_user
+          password: api_pass
+        secondary:
+          username: api_user_2
+          password: api_pass_2
+      db:
+        type: postgres
+        host: localhost
+        port: 5432
+        database: DB
+        credentials:
+          username: db_user
+          password: db_pass
+
+    - id: demo
+      domains:
+        desktop: https://dev.demo.com
+        mobile: https://m.dev.demo.com
+      routes: common-routes.yaml
+      auth: auth-default.yaml
+      db: oracle-dev.yaml
+      execution:
+        threads: 2

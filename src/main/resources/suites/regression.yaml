@@ -1,0 +1,9 @@
+suite:
+  name: regression
+  operators: [demo]
+  flakiness:
+    retries: 2
+    failOnFlaky: false
+    quarantine:
+      enabled: true
+      maxFlakyRatePercent: 5
