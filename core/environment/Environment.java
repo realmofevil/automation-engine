@@ -1,0 +1,1 @@
+package core.environment; public enum Environment { STAGING, PRODUCTION }
