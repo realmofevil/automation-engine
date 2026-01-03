@@ -25,7 +25,7 @@ public class ApiRequestSpec {
     private final Map<String, String> queryParams = new HashMap<>();
     private final Map<String, String> headers = new HashMap<>();
     private final ApiClient apiClient;
-    
+
     private boolean isRetry = false;
     private boolean followRedirects = true;
 
@@ -68,6 +68,7 @@ public class ApiRequestSpec {
 
     private Response execute(String method, Object body) {
         try {
+
             RouteDefinition routeDef = context.routes().get(routeKey);
             
             // --- SERVICE RESOLUTION ---
@@ -77,6 +78,7 @@ public class ApiRequestSpec {
             // Convention: If route key starts with "payment.", look for "payment" service.
 
             URI baseUri;
+
             if (routeKey.startsWith("payment.")) {
                 baseUri = context.config().getServiceUri("payment");
             } else if (routeKey.startsWith("aux.")) {
@@ -84,10 +86,10 @@ public class ApiRequestSpec {
             } else {
                 baseUri = context.config().domains().desktopUri();
             }
-            
+
             String basePath = baseUri.getPath().endsWith("/") ? baseUri.getPath() : baseUri.getPath() + "/";
             String routePath = routeDef.path().startsWith("/") ? routeDef.path().substring(1) : routeDef.path();
-            
+
             URI fullUri = baseUri.resolve(basePath + routePath);
 
             if (!queryParams.isEmpty()) {
@@ -102,7 +104,11 @@ public class ApiRequestSpec {
                 fullUri = new URI(fullUri.getScheme(), fullUri.getAuthority(), fullUri.getPath(), newQuery, fullUri.getFragment());
             }
 
-            HttpRequest.Builder builder = HttpRequest.newBuilder().uri(fullUri);
+            HttpRequest.Builder builder = HttpRequest.newBuilder();
+
+            URI finalUri = apiClient.applyAuthentication(builder, fullUri);
+            
+            builder.uri(finalUri);
 
             headers.forEach(builder::header);
 
@@ -116,12 +122,6 @@ public class ApiRequestSpec {
                 builder.method(method, HttpRequest.BodyPublishers.noBody());
             }
 
-            ApiRequest initialRequest = new ApiRequest(builder.build());
-            
-            ApiRequest authenticatedRequest = context.authChain().apply(context, initialRequest, null);
-
-            URI finalUri = authenticatedRequest.httpRequest().uri();
-
             if (!isRetry) {
                 StepReporter.info(method + " " + finalUri);
             } else {
@@ -129,13 +129,13 @@ public class ApiRequestSpec {
             }
 
             HttpClient client = apiClient.getNativeClient(followRedirects);
-            HttpResponse<String> httpRes = client.send(authenticatedRequest.httpRequest(), HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> httpRes = client.send(builder.build(), HttpResponse.BodyHandlers.ofString());
 
             if (httpRes.statusCode() == 401 && !isRetry) {
                 StepReporter.warn("401 Unauthorized. Refreshing token...");
                 context.authManager().reauthenticate();
                 this.isRetry = true; 
-                return execute(method, body);
+                return execute(method, body); // Recursive retry
             }
 
             StepReporter.attachJson("Response " + httpRes.statusCode(), httpRes.body());

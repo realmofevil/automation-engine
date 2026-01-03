@@ -1,48 +1,64 @@
 package dev.realmofevil.automation.engine.db;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.sql.DataSource;
 import java.sql.Connection;
+import java.sql.SQLException;
 
-public final class TransactionManager {
+public class TransactionManager {
+    private static final Logger LOG = LoggerFactory.getLogger(TransactionManager.class);
+    private final DataSource dataSource;
+    private final ThreadLocal<Connection> currentConnection = new ThreadLocal<>();
 
-    private final OperatorDbPool pool;
-    private final ThreadLocal<TransactionContext> current =
-            new ThreadLocal<>();
-
-    public TransactionManager(OperatorDbPool pool) {
-        this.pool = pool;
+    public TransactionManager(DataSource dataSource) {
+        this.dataSource = dataSource;
     }
 
-    public TransactionContext begin() {
-        //TestReporter.info("Opening DB transaction");
-        Connection conn = pool.acquire();
-        TransactionContext ctx = new TransactionContext(conn);
-        current.set(ctx);
-        return ctx;
-    }
-
-    public TransactionContext current() {
-        return current.get();
-    }
-
-    public void end() {
-        TransactionContext ctx = current.get();
-        if (ctx == null) {
-            return;
+    public void begin() {
+        if (currentConnection.get() != null) {
+            throw new IllegalStateException("Transaction already active on this thread");
         }
+        try {
+            Connection conn = dataSource.getConnection();
+            conn.setAutoCommit(false);
+            currentConnection.set(conn);
+            LOG.debug("Transaction started");
+        } catch (SQLException e) {
+            throw new RuntimeException("Failed to begin transaction", e);
+        }
+    }
+
+    public Connection getConnection() {
+        Connection conn = currentConnection.get();
+        if (conn == null) {
+            throw new IllegalStateException("No active transaction. Did you forget @Test transaction setup?");
+        }
+        return conn;
+    }
+
+    public void end(boolean commit) {
+        Connection conn = currentConnection.get();
+        if (conn == null) return;
 
         try {
-            if (ctx.shouldCommit()) {
-                //TestReporter.info("Committing DB transaction");
-                ctx.connection().commit();
+            if (commit) {
+                conn.commit();
+                LOG.debug("Transaction committed");
             } else {
-                ctx.connection().rollback();
+                conn.rollback();
+                LOG.debug("Transaction rolled back");
             }
-        } catch (Exception e) {
-            //TestReporter.warn("Rolling back DB transaction");
-            throw new RuntimeException("Transaction failed", e);
+        } catch (SQLException e) {
+            LOG.error("Failed to end transaction", e);
         } finally {
-            pool.release(ctx.connection());
-            current.remove();
+            try {
+                conn.close();
+            } catch (SQLException e) {
+                LOG.warn("Failed to close connection", e);
+            }
+            currentConnection.remove();
         }
     }
 }

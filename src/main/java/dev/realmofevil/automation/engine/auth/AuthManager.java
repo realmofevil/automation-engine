@@ -58,6 +58,7 @@ public class AuthManager {
         
         if (config.auth() != null) {
             for (OperatorConfig.AuthDefinition def : config.auth()) {
+                // Only apply strategies that specify a 'useAccount' (Transport Layer)
                 if (def.useAccount() != null) {
                     OperatorConfig.ApiAccount transportAcc = resolveAccount(def.useAccount());
 
@@ -97,7 +98,6 @@ public class AuthManager {
     private void applyAuthStrategy(OperatorConfig.AuthDefinition def, OperatorConfig.ApiAccount account) {
         switch (def.type()) {
             case LOGIN_TOKEN:
-                // Note: might check token expiry
                 if (context.auth().getAuthToken() == null) {
                     loginClient.login(account, def);
                 }
@@ -146,7 +146,6 @@ public class AuthManager {
     public void releaseAccount() {
         OperatorConfig.ApiAccount current = context.getLeasedAccount();
         if (current != null) {
-            
             context.getAccountPool().release(current);
             context.setLeasedAccount(null);
         }

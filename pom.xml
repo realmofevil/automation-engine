@@ -7,7 +7,7 @@
 
   <groupId>dev.realmofevil</groupId>
   <artifactId>automation</artifactId>
-  <version>0.5.1</version>
+  <version>0.6.1</version>
 
   <name>Automation Engine Skeleton</name>
   <description>A platform to execute or run suites with tests</description>
@@ -60,7 +60,11 @@
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-simple</artifactId>
       <version>${slf4j-simple.version}</version>
-      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.rabbitmq</groupId>
+      <artifactId>amqp-client</artifactId>
+      <version>5.28.0</version>
     </dependency>
     <dependency>
       <groupId>com.zaxxer</groupId>

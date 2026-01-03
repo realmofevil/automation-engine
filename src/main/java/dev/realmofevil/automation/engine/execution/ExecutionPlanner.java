@@ -1,55 +1,38 @@
 package dev.realmofevil.automation.engine.execution;
 
-import dev.realmofevil.automation.engine.bootstrap.CliOverrides;
-import dev.realmofevil.automation.engine.operator.OperatorConfig;
-import dev.realmofevil.automation.engine.routing.RouteCatalog;
-import dev.realmofevil.automation.engine.routing.RouteCatalogLoader;
-import dev.realmofevil.automation.engine.suite.SuiteDefinition;
-import dev.realmofevil.automation.engine.suite.TestDefinition;
+import dev.realmofevil.automation.engine.config.OperatorConfig;
+import dev.realmofevil.automation.engine.config.SuiteDefinition;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 public final class ExecutionPlanner {
+    
+    private static final Logger LOG = LoggerFactory.getLogger(ExecutionPlanner.class);
 
     private ExecutionPlanner() {}
 
-    public static List<OperatorExecutionPlan> plan(
-            List<OperatorConfig> operators,
-            SuiteDefinition suite,
-            CliOverrides overrides
-    ) {
+    public static List<OperatorExecutionPlan> plan(List<OperatorConfig> operators, SuiteDefinition suite) {
+        List<OperatorExecutionPlan> plans = new ArrayList<>();
+        List<String> targets = suite.targetOperators();
+        
+        boolean runAll = targets.contains("ALL");
 
-        Set<String> includedOperators = resolveOperators(suite, overrides);
-
-        return operators.stream()
-                .filter(op -> includedOperators.contains(op.id()))
-                .map(op -> buildPlan(op, suite))
-                .toList();
-    }
-
-    private static OperatorExecutionPlan buildPlan(
-            OperatorConfig operator,
-            SuiteDefinition suite
-    ) {
-        RouteCatalog routes =
-                RouteCatalogLoader.load(operator.routeCatalog());
-
-        return new OperatorExecutionPlan(
-                operator,
-                routes,
-                suite.tests()
-        );
-    }
-
-    private static Set<String> resolveOperators(
-            SuiteDefinition suite,
-            CliOverrides overrides
-    ) {
-        if (overrides.has("operator")) {
-            return Set.of(overrides.get("operator").split(","));
+        for (OperatorConfig op : operators) {
+            if (runAll || targets.contains(op.id())) {
+                LOG.info("Scheduling suite '{}' for operator '{}' ({})", suite.name(), op.id(), op.environment());
+                plans.add(new OperatorExecutionPlan(op, suite.tests()));
+            } else {
+                LOG.debug("Skipping operator '{}' (not in target list)", op.id());
+            }
         }
-        return suite.operators().stream().collect(Collectors.toSet());
+
+        if (plans.isEmpty()) {
+            throw new IllegalStateException("No operators matched the suite targets: " + targets);
+        }
+
+        return plans;
     }
 }

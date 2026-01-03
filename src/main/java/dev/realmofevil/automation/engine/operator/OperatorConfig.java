@@ -1,6 +1,7 @@
 package dev.realmofevil.automation.engine.operator;
 
 import dev.realmofevil.automation.engine.auth.AuthenticationChain;
+import dev.realmofevil.automation.engine.config.Secret;
 import dev.realmofevil.automation.engine.db.DbConfig;
 
 import java.net.URI;
@@ -63,6 +64,13 @@ public final class OperatorConfig {
 
     public Map<String, ApiAccount> apiAccounts() {
         return apiAccounts;
+    }
+
+    public record ApiAccount(
+            Secret username,
+            Secret password,
+            boolean isPool
+    ) {
     }
 
     public DbConfig dbConfig() {

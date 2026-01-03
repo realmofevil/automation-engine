@@ -20,3 +20,40 @@ report:
     paths:
       - allure-report
       - allure-results
+
+
+
+
+
+
+stages:
+  - test
+  - report
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+
+cache:
+  paths:
+    - .m2/repository
+    - target
+
+run_automation:
+  image: maven:3.9.6-eclipse-temurin-21
+  stage: test
+  script:
+    - mvn clean test -Denv=dev -Dsuite=smoke
+  artifacts:
+    when: always
+    paths:
+      - target/allure-results
+
+generate_report:
+  stage: report
+  image: frankescobar/allure-docker-service
+  script:
+    - allure generate target/allure-results -o target/site/allure-report
+  artifacts:
+    paths:
+      - target/site/allure-report
+    expire_in: 1 week
