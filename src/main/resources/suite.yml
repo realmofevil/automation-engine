@@ -1,0 +1,7 @@
+suite:
+  name: regression
+  includeTags: [smoke, regression]
+  excludeTags: [wip]
+  parallelism: 8
+  environment: qa
+  operator: all

@@ -1,0 +1,5 @@
+suite:
+  name: prod-regression-all
+  includeTags: [regression]
+  environment: prod
+  operator: all

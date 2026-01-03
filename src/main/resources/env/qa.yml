@@ -1,0 +1,60 @@
+environment:
+  name: qa
+  timeoutMs: 10000
+
+  operators:
+    site-a:
+      domain: qa.site-a.com
+      basePath: /api
+      scheme: https
+      parallelism: 6
+      auth:
+        type: BASIC
+        accounts:
+          - username: dXNlcjE=
+            password: cGFzc3dvcmQx
+          - username: dXNlcjI=
+            password: cGFzc3dvcmQy
+      database:
+        driver: ORACLE
+        url: jdbc:oracle:thin:@qa-oracle:1521/DB
+        username: user
+        password: secret
+
+    site-b:
+      domain: qa.site-b.com
+      basePath: /api
+      scheme: https
+      parallelism: 2
+      auth:
+        type: TOKEN
+        loginEndpoint: /auth/login
+        accounts:
+          - username: YmV0dXNlcjE=
+            password: c2VjcmV0MQ==
+      database:
+        driver: POSTGRES
+        url: jdbc:postgresql://qa-postgres:5432/db
+        username: user
+        password: secret
+  
+    demo:
+      domain: qa.demo.com
+      basePath: /api
+      scheme: https
+      parallelism: 4
+      auth:
+        mechanisms:
+          - BASIC
+          - SESSION
+          - TOKEN
+        login:
+          endpoint: /auth/login
+          method: POST
+          tokenField: access_token
+          sessionCookie: JSESSIONID
+        accounts:
+          - username: dXNlcjE=
+            password: cGFzczE=
+          - username: dXNlcjI=
+            password: cGFzczI=

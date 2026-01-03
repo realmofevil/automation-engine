@@ -1,0 +1,13 @@
+
+suite:
+  name: string(required)
+  environment: string(required)
+  operators:
+    - name: string(required)
+      domain: string(required)
+      parallelism: int(min=1)
+      routes:
+        basePath: string(required)
+      auth:
+        strategies:
+          - type: enum[nothing,basic,token,session]

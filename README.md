@@ -1,4 +1,4 @@
-# Automation Engine v0.1.2
+# Automation Engine v0.2.3
 
 Java 21, JUnit 5, native HttpClient.
 Operator site-first, YAML-driven API automation.
