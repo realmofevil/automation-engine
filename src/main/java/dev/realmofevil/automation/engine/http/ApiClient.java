@@ -1,49 +1,34 @@
 package dev.realmofevil.automation.engine.http;
 
-import io.qameta.allure.Allure;
+import dev.realmofevil.automation.engine.context.ExecutionContext;
 
-import java.net.URI;
+import java.io.IOException;
 import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
-public class ApiClient {
+public final class ApiClient {
 
-    private final HttpClient client = HttpClient.newHttpClient();
+    private final HttpClient client;
 
-    public HttpResponse<String> get(String url) throws Exception {
-        return send("GET", url, null);
+    public ApiClient(HttpClient client) {
+        this.client = client;
     }
 
-    public HttpResponse<String> post(String url, String body) throws Exception {
-        return send("POST", url, body);
-    }
-
-    private HttpResponse<String> send(String method, String url, String body)
-            throws Exception {
-
-        Allure.step(method + " " + url);
-
-        HttpRequest.Builder b = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("Content-Type", "application/json");
-
-        if (body != null) {
-            // if ("POST".equals(method)) {
-            Allure.addAttachment("Request Body", body);
-            b.POST(HttpRequest.BodyPublishers.ofString(body));
-        } else {
-            b.GET();
+    public ApiResponse send(ApiRequest request) {
+        try {
+            HttpResponse<String> response =
+                    client.send(
+                            request.httpRequest(),
+                            HttpResponse.BodyHandlers.ofString()
+                    );
+            return new ApiResponse(response);
+        } catch (IOException | InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("HTTP request failed", e);
         }
+    }
 
-        HttpResponse<String> response = client.send(
-                b.build(),
-                HttpResponse.BodyHandlers.ofString());
-
-        Allure.addAttachment(
-                "Response (" + response.statusCode() + ")",
-                response.body());
-
-        return response;
+    public static ApiClient from(ExecutionContext context) {
+        return new ApiClient(context.httpClient());
     }
 }

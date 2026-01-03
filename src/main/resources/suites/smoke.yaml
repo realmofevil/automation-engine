@@ -1,0 +1,16 @@
+suite:
+  name: smoke
+  tags: [smoke, api]
+
+  operators:
+    include: [site-a, site-b, demo]
+  flakiness:
+    retries: 1
+    failOnFlaky: false
+
+  tests:
+    - class: dev.realmofevil.automation.tests.common.UserBalanceTest
+      tags: [payments]
+
+    - class: dev.realmofevil.automation.tests.DynamicSmokeTest
+      tags: [api, smoke]

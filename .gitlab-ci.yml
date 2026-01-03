@@ -1,0 +1,22 @@
+stages: [test, report]
+
+test:
+  #stage: test
+  image: maven:3.9-eclipse-temurin-21
+  script:
+    - mvn test
+  artifacts:
+    paths:
+      - allure-results
+
+report:
+  stage: report
+  script:
+    - mkdir -p allure-results/history
+    - cp -r previous-allure/history allure-results/ || true
+    - allure generate allure-results -o allure-report
+  artifacts:
+    when: always
+    paths:
+      - allure-report
+      - allure-results

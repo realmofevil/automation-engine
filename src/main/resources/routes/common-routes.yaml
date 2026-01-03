@@ -1,0 +1,21 @@
+routes:
+  services-auxiliary:
+    service-a:
+      getApiMobile:
+        method: GET
+        path: /api-service-a/mobile
+      getApiDesktop:
+        method: GET
+        path: /api-service-a/desktop
+
+  payments:
+    balance:
+      customerAccount:
+        method: GET
+        path: /payments/balance/account
+      lockBalance:
+        method: PUT
+        path: /payments/balance/lock
+      unlockBalance:
+        method: PUT
+        path: /payments/balance/unlock

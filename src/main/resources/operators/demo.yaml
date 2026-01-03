@@ -1,0 +1,13 @@
+id: demo
+domains:
+  api: https://httpbin.org
+
+credentials:
+  apiUsers:
+    - username: ZGVtbw==
+      password: ZGVtbw==
+db:
+  type: postgresql
+  host: localhost
+  username: ZGI=
+  password: ZGI=
