@@ -9,7 +9,7 @@ public final class ApiRequest {
 
     private final HttpRequest request;
 
-    private ApiRequest(HttpRequest request) {
+    public ApiRequest(HttpRequest request) {
         this.request = request;
     }
 

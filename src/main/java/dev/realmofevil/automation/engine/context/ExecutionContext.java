@@ -1,76 +1,130 @@
 package dev.realmofevil.automation.engine.context;
 
-import dev.realmofevil.automation.engine.auth.AccountPool;
+import dev.realmofevil.automation.engine.config.OperatorConfig;
+import dev.realmofevil.automation.engine.http.ApiClient;
+import dev.realmofevil.automation.engine.auth.AuthSession;
 import dev.realmofevil.automation.engine.auth.AuthenticationChain;
-import dev.realmofevil.automation.engine.db.OperatorDbPool;
-import dev.realmofevil.automation.engine.db.TransactionManager;
-import dev.realmofevil.automation.engine.execution.OperatorExecutionPlan;
-import dev.realmofevil.automation.engine.operator.OperatorConfig;
-import dev.realmofevil.automation.engine.reporting.ReportingContext;
+import dev.realmofevil.automation.engine.auth.BasicAuthenticationStep;
+import dev.realmofevil.automation.engine.auth.SessionAuthenticationStep;
+import dev.realmofevil.automation.engine.auth.TokenAuthenticationStep;
+import dev.realmofevil.automation.engine.auth.AccountPool;
+import dev.realmofevil.automation.engine.auth.AuthManager;
 import dev.realmofevil.automation.engine.routing.RouteCatalog;
+import dev.realmofevil.automation.engine.db.DbClient;
+import dev.realmofevil.automation.engine.db.TransactionManager;
+import dev.realmofevil.automation.engine.messaging.RabbitMqClient;
+// import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.net.http.HttpClient;
-import java.time.Clock;
+import javax.sql.DataSource;
+
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class ExecutionContext {
+    private final OperatorConfig operatorConfig;
+    private final RouteCatalog routeCatalog;
+    private final ApiClient apiClient;
+    private final AuthSession authSession;
+    private final AuthManager authManager;
+    private final Map<String, TransactionManager> txManagers;
+    private final Map<String, DbClient> dbClients;
+    private final AccountPool accountPool;
+    private OperatorConfig.ApiAccount leasedAccount;
+    private final RabbitMqClient rabbitClient;
+    private final AuthenticationChain authenticationChain;
 
-    private final OperatorConfig operator;
-    private final RouteCatalog routes;
-    private final HttpClient httpClient;
-    private final Clock clock;
-    private final AccountPool accounts;
-    private final AuthenticationChain auth;
-    private final TransactionManager transactions;
-    private final ReportingContext reportingContext;
+    public ExecutionContext(OperatorConfig config, RouteCatalog catalog, Map<String, DataSource> dataSources,
+            AccountPool pool) {
+        this.operatorConfig = config;
+        this.routeCatalog = catalog;
 
-    public ExecutionContext(
-            OperatorConfig operator,
-            RouteCatalog routes,
-            HttpClient httpClient,
-            Clock clock,
-            OperatorDbPool dbPool,
-            OperatorExecutionPlan plan
-    ) {
-        this.operator = operator;
-        this.routes = routes;
-        this.httpClient = httpClient;
-        this.clock = clock;
-        this.accounts = operator.accountPool();
-        this.auth = operator.authenticationChain();
-        this.transactions = new TransactionManager(dbPool);
-        this.reportingContext = new ReportingContext(
-                plan.environment(),
-                plan.operator().id(),
-                plan.suite().name(),
-                plan.executionId()
-        );
+        this.authenticationChain = new AuthenticationChain(List.of(
+                new BasicAuthenticationStep(),
+                new TokenAuthenticationStep(),
+                new SessionAuthenticationStep()));
+        this.authSession = new AuthSession();
+        this.authManager = new AuthManager(this);
+        this.apiClient = new ApiClient(this);
+
+        this.rabbitClient = new RabbitMqClient(config.rabbit(), apiClient.getMapper());
+
+        this.txManagers = new ConcurrentHashMap<>();
+        this.dbClients = new ConcurrentHashMap<>();
+
+        dataSources.forEach((key, ds) -> {
+            TransactionManager tm = new TransactionManager(ds);
+            txManagers.put(key, tm);
+            dbClients.put(key, new DbClient(tm));
+        });
+
+        this.accountPool = pool;
     }
 
-    public OperatorConfig operator() {
-        return operator;
+    public OperatorConfig config() {
+        return operatorConfig;
     }
 
     public RouteCatalog routes() {
-        return routes;
+        return routeCatalog;
     }
 
-    public HttpClient httpClient() {
-        return httpClient;
+    public ApiClient api() {
+        return apiClient;
     }
 
-    public Clock clock() {
-        return clock;
+    public RabbitMqClient messaging() {
+        return rabbitClient;
     }
 
-    public AccountPool accounts() {
-        return accounts;
+    public AuthSession auth() {
+        return authSession;
     }
 
-    public AuthenticationChain auth() {
-        return auth;
+    public AuthManager authManager() {
+        return authManager;
     }
 
-    public TransactionManager transactions() {
-        return transactions;
+    public AccountPool getAccountPool() {
+        return accountPool;
+    }
+
+    public AuthenticationChain authChain() {
+        return authenticationChain;
+    }
+
+    public void setLeasedAccount(OperatorConfig.ApiAccount acc) {
+        this.leasedAccount = acc;
+    }
+
+    public OperatorConfig.ApiAccount getLeasedAccount() {
+        return leasedAccount;
+    }
+
+    public DbClient db() {
+        return db("core");
+    }
+
+    public DbClient db(String name) {
+        if (!dbClients.containsKey(name)) {
+            if (dbClients.size() == 1)
+                return dbClients.values().iterator().next();
+            throw new IllegalArgumentException("Database '" + name + "' not configured for this operator.");
+        }
+        return dbClients.get(name);
+    }
+
+    public TransactionManager transactions(String name) {
+        return txManagers.get(name);
+    }
+
+    public Map<String, TransactionManager> getAllTransactionManagers() {
+        return txManagers;
+    }
+
+    public void closeResources() {
+        if (rabbitClient != null) {
+            rabbitClient.close();
+        }
     }
 }

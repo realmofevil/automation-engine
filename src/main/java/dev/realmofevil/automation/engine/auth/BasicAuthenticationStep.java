@@ -7,52 +7,48 @@ import java.net.URI;
 import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.Map;
 
-public final class BasicAuthenticationStep
-        implements AuthenticationStep {
+public final class BasicAuthenticationStep implements AuthenticationStep {
 
     @Override
-    public ApiRequest apply(
-            ExecutionContext context,
-            ApiRequest request,
-            AuthContext authContext
-    ) {
-        AccountCredentials account =
-                context.accounts().next();
+    public ApiRequest apply(ExecutionContext context, ApiRequest request, AuthContext authContext) {
+        // authContext might be redundant if using ExecutionContext directly
 
-        String basic =
-                Base64.getEncoder().encodeToString(
-                        (account.username() + ":" + account.password())
-                                .getBytes(StandardCharsets.UTF_8)
-                );
+        String username = context.auth().getTransportUser();
+        String password = context.auth().getTransportPassword();
+
+        if (username == null || password == null) {
+            return request;
+        }
+
+        String basicAuth = Base64.getEncoder().encodeToString(
+                (username + ":" + password).getBytes(StandardCharsets.UTF_8));
 
         HttpRequest original = request.httpRequest();
         URI uri = original.uri();
 
-        URI uriWithCreds =
-                URI.create(
-                        uri.getScheme() + "://"
-                                + account.username()
-                                + ":" + account.password()
-                                + "@"
-                                + uri.getHost()
-                                + uri.getRawPath()
-                );
+        URI uriWithCreds;
+        try {
+            String userInfo = username + ":" + password;
+            uriWithCreds = new URI(
+                    uri.getScheme(),
+                    userInfo,
+                    uri.getHost(),
+                    uri.getPort(),
+                    uri.getPath(),
+                    uri.getQuery(),
+                    null);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to construct Basic Auth URL", e);
+        }
 
         return ApiRequest.builder()
                 .uri(uriWithCreds)
-                .headers(
-                        java.util.Map.of(
-                                "Authorization",
-                                "Basic " + basic
-                        )
-                )
+                .headers(Map.of("Authorization", "Basic " + basicAuth))
                 .method(
                         original.method(),
-                        original.bodyPublisher().orElse(
-                                HttpRequest.BodyPublishers.noBody()
-                        )
-                )
+                        original.bodyPublisher().orElse(HttpRequest.BodyPublishers.noBody()))
                 .build();
     }
 }
