@@ -165,9 +165,9 @@ public class ApiRequestSpec {
             URI finalUri = authenticatedRequest.httpRequest().uri();
 
             if (!isRetry) {
-                StepReporter.info(method + " " + finalUri);
+                StepReporter.info(String.format("Invoking route: %s [%s %s]", routeKey, method, finalUri));
             } else {
-                StepReporter.warn("RETRY: " + method + " " + finalUri);
+                StepReporter.warn(String.format("RETRY route: %s [%s %s]", routeKey, method, finalUri));
             }
 
             HttpClient client = apiClient.getNativeClient(followRedirects);

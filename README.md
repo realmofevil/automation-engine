@@ -1,15 +1,21 @@
-# Automation Engine v0.6.4
+# Kandra v0.6.5
+Kandra is an Automation Engine and Enterprise-grade API automation framework.
+
+
 
 Java 21, JUnit 5, native HttpClient.
 
-Operator site-first, YAML-driven API automation.
-
-Enterprise-grade API automation framework.
+Multi-Tenant Operator-site-first, YAML-driven API automation.
 
 
 - [x] Java 21 features
-- [x] Parallel execution verified
-- [x] Allure results + persistent history retention setup
-- [x] CI pipeline + logging wired
+
+- [x] Parallel execution
+
+- [x] Allure results + persistent history retention
+
+- [x] CI pipeline + logging
+
 - [x] YAML controls behavior
+
 - [x] CLI overrides

@@ -37,8 +37,8 @@ public class DbClient {
                 return results;
             }
         } catch (SQLException e) {
-            StepReporter.error("DB Query Failed", e);
-            throw new RuntimeException(e);
+            StepReporter.error("DB Query Failed: " + e.getMessage(), e);
+            throw new RuntimeException("Database execution failed", e);
         }
     }
 }

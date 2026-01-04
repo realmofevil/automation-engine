@@ -3,15 +3,13 @@ package dev.realmofevil.automation.launcher;
 import dev.realmofevil.automation.engine.bootstrap.ConfigLoader;
 import dev.realmofevil.automation.engine.config.EnvironmentConfig;
 import dev.realmofevil.automation.engine.reporting.AllureLifecycleManager;
+import dev.realmofevil.automation.engine.reporting.ConsoleSummaryListener;
 import dev.realmofevil.automation.engine.reporting.StepReporter;
 import org.junit.platform.launcher.Launcher;
 import org.junit.platform.launcher.LauncherDiscoveryRequest;
 import org.junit.platform.launcher.core.LauncherDiscoveryRequestBuilder;
 import org.junit.platform.launcher.core.LauncherFactory;
-import org.junit.platform.launcher.listeners.SummaryGeneratingListener;
-import org.junit.platform.launcher.listeners.TestExecutionSummary;
 
-import java.io.PrintWriter;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -56,7 +54,7 @@ public class AutomationLauncher {
 
     private static void launchJUnit() {
         Launcher launcher = LauncherFactory.create();
-        SummaryGeneratingListener summaryListener = new SummaryGeneratingListener();
+        ConsoleSummaryListener summaryListener = new ConsoleSummaryListener();
         launcher.registerTestExecutionListeners(summaryListener);
 
         LauncherDiscoveryRequest request = LauncherDiscoveryRequestBuilder.request()
@@ -65,10 +63,7 @@ public class AutomationLauncher {
 
         launcher.execute(request);
 
-        TestExecutionSummary summary = summaryListener.getSummary();
-        summary.printTo(new PrintWriter(System.out));
-
-        if (summary.getTotalFailureCount() > 0) {
+        if (summaryListener.getSummary().getTotalFailureCount() > 0) {
             System.exit(1);
         }
     }
