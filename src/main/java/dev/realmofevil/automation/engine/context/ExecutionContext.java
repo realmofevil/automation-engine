@@ -12,7 +12,8 @@ import dev.realmofevil.automation.engine.auth.AuthManager;
 import dev.realmofevil.automation.engine.routing.RouteCatalog;
 import dev.realmofevil.automation.engine.db.DbClient;
 import dev.realmofevil.automation.engine.db.TransactionManager;
-import dev.realmofevil.automation.engine.messaging.RabbitMqClient;
+import dev.realmofevil.automation.engine.messaging.MessagingPort;
+import dev.realmofevil.automation.engine.messaging.RabbitMqAdapter;
 
 import javax.sql.DataSource;
 
@@ -30,8 +31,9 @@ public final class ExecutionContext {
     private final Map<String, DbClient> dbClients;
     private final AccountPool accountPool;
     private OperatorConfig.ApiAccount leasedAccount;
-    private final RabbitMqClient rabbitClient;
+    private final MessagingPort messagingPort;
     private final AuthenticationChain authenticationChain;
+    private final Map<String, Object> state = new ConcurrentHashMap<>();
 
     public ExecutionContext(OperatorConfig config, RouteCatalog catalog, Map<String, DataSource> dataSources,
             AccountPool pool) {
@@ -46,7 +48,7 @@ public final class ExecutionContext {
         this.authManager = new AuthManager(this);
         this.apiClient = new ApiClient(this);
 
-        this.rabbitClient = new RabbitMqClient(config.rabbit(), apiClient.getMapper());
+        this.messagingPort = new RabbitMqAdapter(config.rabbit(), apiClient.getMapper());
 
         this.txManagers = new ConcurrentHashMap<>();
         this.dbClients = new ConcurrentHashMap<>();
@@ -72,8 +74,8 @@ public final class ExecutionContext {
         return apiClient;
     }
 
-    public RabbitMqClient messaging() {
-        return rabbitClient;
+    public MessagingPort messaging() {
+        return messagingPort;
     }
 
     public AuthSession auth() {
@@ -90,6 +92,10 @@ public final class ExecutionContext {
 
     public AuthenticationChain authChain() {
         return authenticationChain;
+    }
+
+    public Map<String, Object> state() {
+        return state;
     }
 
     public void setLeasedAccount(OperatorConfig.ApiAccount acc) {
@@ -122,8 +128,8 @@ public final class ExecutionContext {
     }
 
     public void closeResources() {
-        if (rabbitClient != null) {
-            rabbitClient.close();
+        if (messagingPort != null) {
+            messagingPort.close();
         }
     }
 }

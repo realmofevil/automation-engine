@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
+import java.net.URL;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -23,11 +24,9 @@ public final class ConfigLoader {
     private ConfigLoader() {}
 
     public static EnvironmentConfig loadEnv(String envName) {
-        if (envName == null || envName.isBlank()) {
-            throw new IllegalArgumentException("Environment name cannot be null or empty. Provide --env argument.");
-        }
         String path = "env/" + envName + ".yaml";
-        LOG.info("Loading environment configuration from: {}", path);
+        validateResourceExists(path, "Environment");
+        // LOG.info("Loading environment configuration from: {}", path);
         
         EnvironmentConfig raw = loadInternal(path, EnvironmentConfig.class);
 
@@ -40,34 +39,47 @@ public final class ConfigLoader {
     }
 
     public static SuiteDefinition loadSuite(String suiteName) {
-        if (suiteName == null || suiteName.isBlank()) {
-            throw new IllegalArgumentException("Suite name cannot be null or empty. Provide --suite argument.");
-        }
         String path = "suites/" + suiteName + ".yaml";
-        LOG.info("Loading suite definition from: {}", path);
+        validateResourceExists(path, "Suite");
+        // LOG.info("Loading suite definition from: {}", path);
         return loadInternal(path, SuiteDefinition.class);
     }
 
     @SuppressWarnings("unchecked")
     public static RouteCatalog loadRoutes(String fileName) {
-        if (fileName == null) {
-            throw new IllegalArgumentException("Route catalog filename is null. Check operator config.");
-        }
         String path = "routes/" + fileName;
-        LOG.debug("Loading route catalog from: {}", path);
+        validateResourceExists(path, "Route Catalog");
+        // LOG.debug("Loading route catalog from: {}", path);
         Map<String, Object> raw = loadInternal(path, Map.class);
         Map<String, String> rawRoutes = (Map<String, String>) raw.get("routes");
+
+        if (rawRoutes == null) {
+             throw new IllegalStateException("Invalid Route Catalog: '" + path + "'. Missing 'routes' key.");
+        }
+
         return new RouteCatalog(rawRoutes);
+    }
+
+    private static void validateResourceExists(String path, String configType) {
+        URL resource = ConfigLoader.class.getClassLoader().getResource(path);
+        if (resource == null) {
+            String msg = String.format(
+                "CONFIGURATION ERROR: %s file not found at 'src/main/resources/%s'.\n" +
+                "Please check the filename and your classpath.", 
+                configType, path
+            );
+            LOG.error(msg);
+            throw new IllegalArgumentException(msg);
+        }
     }
 
     private static <T> T loadInternal(String path, Class<T> type) {
         try (InputStream is = ConfigLoader.class.getClassLoader().getResourceAsStream(path)) {
-            if (is == null) {
-                throw new IllegalStateException("Configuration file not found in classpath: " + path);
-            }
             return YamlSupport.create(type).loadAs(is, type);
         } catch (Exception e) {
-            throw new RuntimeException("Failed to load or parse configuration: " + path, e);
+            String msg = "YAML PARSING ERROR: Failed to parse '" + path + "'. Check syntax indentation and field names.";
+            LOG.error(msg, e);
+            throw new RuntimeException(msg, e);
         }
     }
 

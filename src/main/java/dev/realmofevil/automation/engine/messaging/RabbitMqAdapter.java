@@ -16,20 +16,20 @@ import java.util.concurrent.TimeoutException;
  * Engine wrapper for RabbitMQ interactions.
  * Handles JSON serialization and Connection lifecycle.
  */
-public class RabbitMqClient implements AutoCloseable {
+public class RabbitMqAdapter implements MessagingPort {
 
-    private static final Logger LOG = LoggerFactory.getLogger(RabbitMqClient.class);
+    private static final Logger LOG = LoggerFactory.getLogger(RabbitMqAdapter.class);
 
     private final Connection connection;
     private final Channel channel;
     private final ObjectMapper mapper;
 
-    public RabbitMqClient(OperatorConfig.RabbitConfig config, ObjectMapper mapper) {
+    public RabbitMqAdapter(OperatorConfig.RabbitConfig config, ObjectMapper mapper) {
         this.mapper = mapper;
         if (config == null) {
             this.connection = null;
             this.channel = null;
-            return;
+            return; // Rabbit not configured for this operator
         }
 
         ConnectionFactory factory = new ConnectionFactory();
@@ -52,21 +52,27 @@ public class RabbitMqClient implements AutoCloseable {
         }
     }
 
+    @Override
     public void publish(String exchange, String routingKey, Object message) {
         if (channel == null) {
-            throw new IllegalStateException("RabbitMQ is not configured for this operator.");
+            throw new IllegalStateException("Messaging is not configured for this operator.");
         }
 
         try {
             byte[] body = mapper.writeValueAsBytes(message);
             channel.basicPublish(exchange, routingKey, null, body);
 
-            StepReporter.info("Published RabbitMQ Message to '" + exchange + "' : '" + routingKey + "'");
-            StepReporter.attachJson("RabbitMQ Payload", new String(body));
+            StepReporter.info("Messaging: Published to '" + exchange + "' : '" + routingKey + "'");
+            StepReporter.attachJson("Message Payload", new String(body));
 
         } catch (IOException e) {
-            throw new RuntimeException("Failed to publish message to RabbitMQ", e);
+            throw new RuntimeException("Failed to publish message", e);
         }
+    }
+
+    @Override
+    public boolean isConfigured() {
+        return channel != null;
     }
 
     @Override
@@ -77,11 +83,7 @@ public class RabbitMqClient implements AutoCloseable {
             if (connection != null && connection.isOpen())
                 connection.close();
         } catch (Exception e) {
-            LOG.warn("Error closing RabbitMQ connection", e);
+            LOG.warn("Error closing Messaging connection", e);
         }
-    }
-
-    public boolean isConfigured() {
-        return channel != null;
     }
 }

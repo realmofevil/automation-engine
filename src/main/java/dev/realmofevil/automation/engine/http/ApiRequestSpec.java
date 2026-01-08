@@ -22,6 +22,7 @@ public class ApiRequestSpec {
 
     private final ExecutionContext context;
     private final String routeKey;
+    private final Map<String, String> pathParams = new HashMap<>();
     private final Map<String, String> queryParams = new HashMap<>();
     private final Map<String, String> headers = new HashMap<>();
     private final ApiClient apiClient;
@@ -33,6 +34,11 @@ public class ApiRequestSpec {
         this.context = context;
         this.routeKey = routeKey;
         this.apiClient = apiClient;
+    }
+
+    public ApiRequestSpec pathParam(String key, String value) {
+        this.pathParams.put(key, value);
+        return this;
     }
 
     public ApiRequestSpec query(String key, String value) {
@@ -50,20 +56,20 @@ public class ApiRequestSpec {
         return this;
     }
 
-    public Response get() {
-        return execute("GET", null);
+    public ValidatableResponse get() {
+        return new ValidatableResponse(execute("GET", null));
     }
 
-    public Response post(Object body) {
-        return execute("POST", body);
+    public ValidatableResponse post(Object body) {
+        return new ValidatableResponse(execute("POST", body));
     }
 
-    public Response put(Object body) {
-        return execute("PUT", body);
+    public ValidatableResponse put(Object body) {
+        return new ValidatableResponse(execute("PUT", body));
     }
 
-    public Response delete() {
-        return execute("DELETE", null);
+    public ValidatableResponse delete() {
+        return new ValidatableResponse(execute("DELETE", null));
     }
 
     private Response execute(String method, Object body) {
@@ -111,6 +117,10 @@ public class ApiRequestSpec {
                 basePath += "/";
 
             String routePath = routeDef.path();
+            for (Map.Entry<String, String> entry : pathParams.entrySet()) {
+                routePath = routePath.replace("{" + entry.getKey() + "}", entry.getValue());
+            }
+        
             if (routePath.startsWith("/"))
                 routePath = routePath.substring(1);
 

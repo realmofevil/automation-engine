@@ -45,6 +45,7 @@ public record OperatorConfig(
     public record AuthDefinition(
             AuthType type,
             String loginRoute,
+            String credentialField,
             String tokenField,
             TokenSource tokenSource,
             String tokenHeader,

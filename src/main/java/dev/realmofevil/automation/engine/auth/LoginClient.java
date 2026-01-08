@@ -41,11 +41,14 @@ public final class LoginClient {
             
             URI loginUri = context.config().domains().desktopUri().resolve(routePath);
 
-            Map<String, String> credentials = Map.of(
-                "username", account.username().plainText(),
-                "password", account.password().plainText()
-            );
-            String jsonBody = mapper.writeValueAsString(credentials);
+            String userKey = (def.credentialField() != null) ? def.credentialField() : "username";
+
+            Map<String, Object> payload = new java.util.HashMap<>();
+
+            payload.put(userKey, account.username().plainText());
+            payload.put("password", account.password().plainText());
+
+            String jsonBody = mapper.writeValueAsString(payload);
 
             HttpRequest request = HttpRequest.newBuilder()
                 .uri(loginUri)
