@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
 import java.net.URL;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -21,12 +22,21 @@ import java.util.stream.Collectors;
 public final class ConfigLoader {
     private static final Logger LOG = LoggerFactory.getLogger(ConfigLoader.class);
 
+    private static final Map<String, Object> SYSTEM_DEFAULTS = Map.of(
+            "device", "d",
+            "languageId", 2,
+            "currencyId", 4
+    );
+
     private ConfigLoader() {}
 
     public static EnvironmentConfig loadEnv(String envName) {
+        if (envName == null || envName.isBlank()) {
+            throw new IllegalArgumentException("Environment name cannot be null or empty. Provide --env argument.");
+        }
         String path = "env/" + envName + ".yaml";
         validateResourceExists(path, "Environment");
-        // LOG.info("Loading environment configuration from: {}", path);
+        LOG.info("Loading environment configuration from: {}", path);
         
         EnvironmentConfig raw = loadInternal(path, EnvironmentConfig.class);
 
@@ -41,7 +51,7 @@ public final class ConfigLoader {
     public static SuiteDefinition loadSuite(String suiteName) {
         String path = "suites/" + suiteName + ".yaml";
         validateResourceExists(path, "Suite");
-        // LOG.info("Loading suite definition from: {}", path);
+        LOG.info("Loading suite definition from: {}", path);
         return loadInternal(path, SuiteDefinition.class);
     }
 
@@ -75,6 +85,7 @@ public final class ConfigLoader {
 
     private static <T> T loadInternal(String path, Class<T> type) {
         try (InputStream is = ConfigLoader.class.getClassLoader().getResourceAsStream(path)) {
+            if (is == null) throw new IllegalStateException("Config file not found: " + path);
             return YamlSupport.create(type).loadAs(is, type);
         } catch (Exception e) {
             String msg = "YAML PARSING ERROR: Failed to parse '" + path + "'. Check syntax indentation and field names.";
@@ -84,18 +95,28 @@ public final class ConfigLoader {
     }
 
     private static OperatorConfig mergeDefaults(OperatorConfig specific, OperatorConfig defaults) {
-        if (defaults == null) return specific;
+        Map<String, Object> mergedContext = new HashMap<>(SYSTEM_DEFAULTS);
+        
+        if (defaults != null && defaults.contextDefaults() != null) {
+            mergedContext.putAll(defaults.contextDefaults());
+        }
+        if (specific.contextDefaults() != null) {
+            mergedContext.putAll(specific.contextDefaults());
+        }
+
         return new OperatorConfig(
             specific.id(),
             specific.environment(),
             specific.domains(),
-            specific.services() != null ? specific.services() : defaults.services(),
-            specific.accounts(), // Accounts are usually specific
-            specific.databases() != null ? specific.databases() : defaults.databases(),
-            specific.rabbit() != null ? specific.rabbit() : defaults.rabbit(),
-            specific.routeCatalog() != null ? specific.routeCatalog() : defaults.routeCatalog(),
-            specific.parallelism() > 0 ? specific.parallelism() : defaults.parallelism(),
-            (specific.auth() != null && !specific.auth().isEmpty()) ? specific.auth() : defaults.auth());
+            specific.services() != null ? specific.services() : (defaults != null ? defaults.services() : null),
+            specific.accounts(),
+            specific.databases() != null ? specific.databases() : (defaults != null ? defaults.databases() : null),
+            specific.rabbit() != null ? specific.rabbit() : (defaults != null ? defaults.rabbit() : null),
+            mergedContext,
+            specific.routeCatalog() != null ? specific.routeCatalog() : (defaults != null ? defaults.routeCatalog() : null),
+            specific.parallelism() > 0 ? specific.parallelism() : (defaults != null && defaults.parallelism() > 0 ? defaults.parallelism() : 1),
+            (specific.auth() != null && !specific.auth().isEmpty()) ? specific.auth() : (defaults != null ? defaults.auth() : null)
+        );
     }
 
     /**
@@ -123,6 +144,7 @@ public final class ConfigLoader {
             op.accounts(),
             op.databases(),
             op.rabbit(),
+            op.contextDefaults(),
             op.routeCatalog(),
             parallelism,
             op.auth());

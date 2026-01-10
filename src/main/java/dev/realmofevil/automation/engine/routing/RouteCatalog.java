@@ -10,6 +10,9 @@ public final class RouteCatalog {
     public RouteCatalog(Map<String, String> rawRoutes) {
         this.routes = new HashMap<>();
         rawRoutes.forEach((key, value) -> {
+            if (value == null) {
+                throw new IllegalArgumentException("Route path cannot be null for key: " + key);
+            }
             String method = "ANY";
             String path = value;
 

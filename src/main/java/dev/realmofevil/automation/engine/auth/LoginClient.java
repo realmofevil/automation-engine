@@ -11,6 +11,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.HashMap;
 import java.util.Map;
 
 public final class LoginClient {
@@ -24,29 +25,38 @@ public final class LoginClient {
     }
 
     public void login(OperatorConfig.ApiAccount account, OperatorConfig.AuthDefinition def) {
-        Allure.step("Authenticating as " + account.username() + " via " + def.type(), () -> {
+        Allure.step("Authenticating as " + account.username().plainText() + " via " + def.type(), () -> {
             performLoginRequest(account, def);
         });
     }
 
     private void performLoginRequest(OperatorConfig.ApiAccount account, OperatorConfig.AuthDefinition def) {
         try {
-            // looking up the login route from the route catalog if it's a key (e.g. "user.login")
-            // or use it as a direct path if it starts with "/" it's a key in routes.yaml
             String routePath = def.loginRoute();
             if (!routePath.startsWith("/")) {
                 RouteDefinition routeDef = context.routes().get(routePath);
                 routePath = routeDef.path();
             }
-            
+
             URI loginUri = context.config().domains().desktopUri().resolve(routePath);
 
-            String userKey = (def.credentialField() != null) ? def.credentialField() : "username";
+            Map<String, Object> payload = new HashMap<>();
 
-            Map<String, Object> payload = new java.util.HashMap<>();
+            payload.putAll(context.config().contextDefaults());
 
-            payload.put(userKey, account.username().plainText());
-            payload.put("password", account.password().plainText());
+            Map<String, Object> requestBody = new HashMap<>();
+            String credentialKey = (def.credentialField() != null) ? def.credentialField() : "username";
+
+            requestBody.put(credentialKey, account.username().plainText());
+            requestBody.put("password", account.password().plainText());
+
+            if (!payload.containsKey("loginType")) {
+                requestBody.put("loginType", deriveLoginType(credentialKey));
+            } else {
+                requestBody.put("loginType", payload.get("loginType"));
+            }
+
+            payload.put("requestBody", requestBody);
 
             String jsonBody = mapper.writeValueAsString(payload);
 
@@ -71,10 +81,19 @@ public final class LoginClient {
 
             context.auth().setAuthToken(token);
             
-            Allure.addAttachment("Auth Token Acquired", "Token length: " + token.length());
+            Allure.addAttachment("Auth Success", "Token acquired for: " + account.username() + " " + token.length());
 
         } catch (Exception e) {
             throw new RuntimeException("Authentication flow failed", e);
+        }
+    }
+
+    private int deriveLoginType(String key) {
+        switch (key.toLowerCase()) {
+            case "email": return 3;
+            case "phone": return 2;
+            case "cpf": return 4;
+            default: return 1;
         }
     }
 

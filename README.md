@@ -1,4 +1,4 @@
-# Kandra v0.6.6
+# Kandra v0.6.7
 Kandra is an Automation Engine and Enterprise-grade API automation framework.
 
 
@@ -12,7 +12,7 @@ Multi-Tenant Operator-site-first, YAML-driven API automation.
 
 - [x] Parallel execution
 
-- [x] Allure results + persistent history retention
+- [x] Allure report + persistent history retention
 
 - [x] CI pipeline + logging
 

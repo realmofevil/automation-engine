@@ -6,12 +6,13 @@ import dev.realmofevil.automation.engine.context.ExecutionContext;
 import java.net.http.HttpClient;
 import java.time.Duration;
 
+
 public class ApiClient {
 
     private final ExecutionContext context;
     private final ObjectMapper mapper;
     private final HttpClient defaultClient;
-    private final HttpClient noRedirectClient;
+    private final HttpClient noRedirectsClient;
 
     public ApiClient(ExecutionContext context) {
         this.context = context;
@@ -22,7 +23,7 @@ public class ApiClient {
                 .followRedirects(HttpClient.Redirect.NORMAL)
                 .build();
 
-        this.noRedirectClient = HttpClient.newBuilder()
+        this.noRedirectsClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(15))
                 .followRedirects(HttpClient.Redirect.NEVER)
                 .build();
@@ -32,20 +33,16 @@ public class ApiClient {
         return new ApiRequestSpec(context, routeKey, this);
     }
 
-    // --- Delegates to Fluent API ---
-
-    public Response post(String routeKey, Object body) {
+    public ValidatableResponse post(String routeKey, Object body) {
         return route(routeKey).post(body);
     }
 
-    public Response get(String routeKey) {
+    public ValidatableResponse get(String routeKey) {
         return route(routeKey).get();
     }
 
-    // --- Accessors ---
-
     public HttpClient getNativeClient(boolean followRedirects) {
-        return followRedirects ? defaultClient : noRedirectClient;
+        return followRedirects ? defaultClient : noRedirectsClient;
     }
 
     public ObjectMapper getMapper() {

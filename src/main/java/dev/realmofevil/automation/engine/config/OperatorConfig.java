@@ -3,6 +3,7 @@ package dev.realmofevil.automation.engine.config;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.Collections;
 
 /**
  * Representation of an Operator configuration in YAML.
@@ -15,6 +16,7 @@ public record OperatorConfig(
         Map<String, ApiAccount> accounts,
         Map<String, DbConfig> databases,
         RabbitConfig rabbit,
+        Map<String, Object> contextDefaults,
         String routeCatalog,
         int parallelism,
         List<AuthDefinition> auth) {
@@ -58,6 +60,35 @@ public record OperatorConfig(
 
     public enum TokenSource {
         RESPONSE_BODY, RESPONSE_HEADER
+    }
+
+    public String getContextDevice() {
+        return String.valueOf(contextDefaults().getOrDefault("device", "d"));
+    }
+
+    public int getContextLanguageId() {
+        Object val = contextDefaults().getOrDefault("languageId", 2);
+        if (val instanceof Integer i) return i;
+        try {
+            return Integer.parseInt(String.valueOf(val));
+        } catch (NumberFormatException e) {
+            return 2;
+        }
+    }
+
+    public int getContextCurrencyId() {
+        Object val = contextDefaults().getOrDefault("currencyId", 1);
+        if (val instanceof Integer i) return i;
+        try {
+            return Integer.parseInt(String.valueOf(val));
+        } catch (NumberFormatException e) {
+            return 4;
+        }
+    }
+
+    @Override
+    public Map<String, Object> contextDefaults() {
+        return contextDefaults != null ? contextDefaults : Collections.emptyMap();
     }
 
     public URI getServiceUri(String serviceName) {

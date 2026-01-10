@@ -76,34 +76,18 @@ public class ApiRequestSpec {
         try {
             RouteDefinition routeDef = context.routes().get(routeKey);
 
-            /**
-            if (!"ANY".equals(routeDef.method()) && !routeDef.method().equalsIgnoreCase(method)) {
-                throw new IllegalStateException(
-                        String.format("Route '%s' enforces method %s but test requested %s",
-                                routeKey, routeDef.method(), method));
+            String routePath = routeDef.path();
+            Map<String, Object> defaults = context.config().contextDefaults();
+            for (Map.Entry<String, Object> entry : defaults.entrySet()) {
+                String token = "{" + entry.getKey() + "}";
+                if (routePath.contains(token)) {
+                    routePath = routePath.replace(token, String.valueOf(entry.getValue()));
+                }
             }
-
-            // --- SERVICE RESOLUTION ---
-            // If the route definition specifies a service (e.g. "payment"), use that host.
-            // Otherwise default to Desktop.
-            // TODO: Maybe will have to update RouteDefinition to support this, or assume a convention.
-            // Convention: If route key starts with "payment.", look for "payment" service.
-
-            URI baseUri;
-            if (routeKey.startsWith("payment.")) {
-                baseUri = context.config().getServiceUri("payment");
-            } else if (routeKey.startsWith("aux.")) {
-                baseUri = context.config().getServiceUri("aux");
-            } else {
-                baseUri = context.config().domains().desktopUri();
-            }
-            **/
             URI baseUri = context.config().domains().desktopUri(); // Default
             
             Map<String, String> services = context.config().services();
             if (services != null) {
-                // Iterate services to find a matching prefix in the route key
-                // Example: Config has "payment" -> "http://pay-api". RouteKey is "payment.lock"
                 for (String serviceName : services.keySet()) {
                     if (routeKey.startsWith(serviceName + ".")) {
                         baseUri = context.config().getServiceUri(serviceName);
@@ -116,8 +100,7 @@ public class ApiRequestSpec {
             if (!basePath.endsWith("/"))
                 basePath += "/";
 
-            String routePath = routeDef.path();
-            for (Map.Entry<String, String> entry : pathParams.entrySet()) {
+            for (Map.Entry<String, String> entry : this.pathParams.entrySet()) {
                 routePath = routePath.replace("{" + entry.getKey() + "}", entry.getValue());
             }
         
@@ -125,12 +108,6 @@ public class ApiRequestSpec {
                 routePath = routePath.substring(1);
 
             String fullPath = basePath + routePath;
-
-            // String basePath = baseUri.getPath().endsWith("/") ? baseUri.getPath() :
-            // baseUri.getPath() + "/";
-            // String routePath = routeDef.path().startsWith("/") ?
-            // routeDef.path().substring(1) : routeDef.path();
-            // URI fullUri = baseUri.resolve(basePath + routePath);
 
             URI fullUri = new URI(
                     baseUri.getScheme(),
