@@ -25,7 +25,8 @@ public final class ConfigLoader {
     private static final Map<String, Object> SYSTEM_DEFAULTS = Map.of(
             "device", "d",
             "languageId", 2,
-            "currencyId", 4
+            "currencyId", 4,
+            "loginType", 1
     );
 
     private ConfigLoader() {}

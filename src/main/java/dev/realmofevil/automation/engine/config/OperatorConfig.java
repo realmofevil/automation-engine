@@ -1,9 +1,9 @@
 package dev.realmofevil.automation.engine.config;
 
 import java.net.URI;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Collections;
 
 /**
  * Representation of an Operator configuration in YAML.
@@ -30,7 +30,10 @@ public record OperatorConfig(
         }
     }
 
-    public record ApiAccount(Secret username, Secret password, boolean isPool) {
+    public record ApiAccount(Secret username, Secret password, boolean isPool, Map<String, Object> metadata) {
+        public Map<String, Object> metadata() {
+            return metadata != null ? metadata : Collections.emptyMap();
+        }
     }
 
     public record DbConfig(String type, String jdbcUrl, Secret username, Secret password) {
@@ -47,7 +50,7 @@ public record OperatorConfig(
     public record AuthDefinition(
             AuthType type,
             String loginRoute,
-            String credentialField,
+            Map<String, Object> payloadTemplate,
             String tokenField,
             TokenSource tokenSource,
             String tokenHeader,
@@ -60,30 +63,6 @@ public record OperatorConfig(
 
     public enum TokenSource {
         RESPONSE_BODY, RESPONSE_HEADER
-    }
-
-    public String getContextDevice() {
-        return String.valueOf(contextDefaults().getOrDefault("device", "d"));
-    }
-
-    public int getContextLanguageId() {
-        Object val = contextDefaults().getOrDefault("languageId", 2);
-        if (val instanceof Integer i) return i;
-        try {
-            return Integer.parseInt(String.valueOf(val));
-        } catch (NumberFormatException e) {
-            return 2;
-        }
-    }
-
-    public int getContextCurrencyId() {
-        Object val = contextDefaults().getOrDefault("currencyId", 1);
-        if (val instanceof Integer i) return i;
-        try {
-            return Integer.parseInt(String.valueOf(val));
-        } catch (NumberFormatException e) {
-            return 4;
-        }
     }
 
     @Override
@@ -105,5 +84,31 @@ public record OperatorConfig(
         if (databases == null || databases.isEmpty())
             return null;
         return databases.getOrDefault("core", databases.values().iterator().next());
+    }
+
+    public String getContextDevice() {
+        return String.valueOf(contextDefaults().getOrDefault("device", "d"));
+    }
+
+    public int getContextLanguageId() {
+        Object val = contextDefaults().getOrDefault("languageId", 2);
+        if (val instanceof Integer i)
+            return i;
+        try {
+            return Integer.parseInt(String.valueOf(val));
+        } catch (NumberFormatException e) {
+            return 2; // Fallback
+        }
+    }
+
+    public int getContextCurrencyId() {
+        Object val = contextDefaults().getOrDefault("currencyId", 1);
+        if (val instanceof Integer i)
+            return i;
+        try {
+            return Integer.parseInt(String.valueOf(val));
+        } catch (NumberFormatException e) {
+            return 4;
+        }
     }
 }

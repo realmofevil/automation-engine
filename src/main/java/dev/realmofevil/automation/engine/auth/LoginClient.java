@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.realmofevil.automation.engine.config.OperatorConfig;
 import dev.realmofevil.automation.engine.context.ExecutionContext;
 import dev.realmofevil.automation.engine.routing.RouteDefinition;
+import dev.realmofevil.automation.engine.util.TemplateProcessor;
 import io.qameta.allure.Allure;
 
 import java.net.URI;
@@ -40,43 +41,40 @@ public final class LoginClient {
 
             URI loginUri = context.config().domains().desktopUri().resolve(routePath);
 
-            Map<String, Object> payload = new HashMap<>();
+            Map<String, Object> resolutionContext = new HashMap<>();
+            resolutionContext.put("context", context.config().contextDefaults());
 
-            payload.putAll(context.config().contextDefaults());
+            Map<String, Object> accountData = new HashMap<>();
+            accountData.put("username", account.username().plainText());
+            accountData.put("password", account.password().plainText());
+            accountData.put("metadata", account.metadata());
+            resolutionContext.put("account", accountData);
 
-            Map<String, Object> requestBody = new HashMap<>();
-            String credentialKey = (def.credentialField() != null) ? def.credentialField() : "username";
-
-            requestBody.put(credentialKey, account.username().plainText());
-            requestBody.put("password", account.password().plainText());
-
-            if (!payload.containsKey("loginType")) {
-                requestBody.put("loginType", deriveLoginType(credentialKey));
-            } else {
-                requestBody.put("loginType", payload.get("loginType"));
+            if (def.payloadTemplate() == null || def.payloadTemplate().isEmpty()) {
+                throw new IllegalStateException("AuthDefinition missing 'payloadTemplate' in YAML.");
             }
 
-            payload.put("requestBody", requestBody);
-
-            String jsonBody = mapper.writeValueAsString(payload);
+            Object payloadObject = TemplateProcessor.process(def.payloadTemplate(), resolutionContext);
+            String jsonBody = mapper.writeValueAsString(payloadObject);
 
             HttpRequest request = HttpRequest.newBuilder()
-                .uri(loginUri)
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                .build();
+                    .uri(loginUri)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                    .build();
 
             HttpClient client = context.api().getNativeClient(true);
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() >= 400) {
-                throw new RuntimeException("Login failed. Status: " + response.statusCode() + " Body: " + response.body());
+                throw new RuntimeException(
+                        "Login failed. Status: " + response.statusCode() + " Body: " + response.body());
             }
 
             String token = extractToken(response, def);
-            
             if (token == null || token.isBlank()) {
-                throw new RuntimeException("Auth token not found using source: " + def.tokenSource() + " and field: " + def.tokenField());
+                throw new RuntimeException(
+                        "Auth token not found using source: " + def.tokenSource() + " and field: " + def.tokenField());
             }
 
             context.auth().setAuthToken(token);
@@ -85,15 +83,6 @@ public final class LoginClient {
 
         } catch (Exception e) {
             throw new RuntimeException("Authentication flow failed", e);
-        }
-    }
-
-    private int deriveLoginType(String key) {
-        switch (key.toLowerCase()) {
-            case "email": return 3;
-            case "phone": return 2;
-            case "cpf": return 4;
-            default: return 1;
         }
     }
 
