@@ -11,28 +11,53 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 /**
  * Fluent Builder for API Requests.
+ * Supports both Route-Key based (Configuration) and Raw URL (Dynamic) execution.
+ * 
+ * Resiliency logic with Retries for Transient Errors and Auth Refresh:
+ *  - Retries on 502, 503, 504 status codes with Exponential Backoff and Jitter.
+ *  - Limits retries to a maximum count to avoid infinite loops.
+ *  - Refreshes authentication tokens on 401
+ *  - Logs retry attempts with context for easier debugging.
+ * 
+ * Security Enhancements:
+ *  - Path parameters are URL-encoded before injection to prevent manipulation of the URL structure.
+ *  - Query parameters are also URL-encoded to ensure safe transmission.
+ *  - Default context parameters are auto-injected into paths securely.
  */
 public class ApiRequestSpec {
-
     private final ExecutionContext context;
     private final String routeKey;
+    private final URI rawUri;
     private final Map<String, String> pathParams = new HashMap<>();
-    private final Map<String, String> queryParams = new HashMap<>();
+    private final Map<String, String> queryParams = new LinkedHashMap<>();
     private final Map<String, String> headers = new HashMap<>();
     private final ApiClient apiClient;
-
-    private boolean isRetry = false;
     private boolean followRedirects = true;
+
+    private static final int MAX_RETRIES = 3;
+    private static final Set<Integer> RETRYABLE_STATUS_CODES = Set.of(502, 503, 504);
 
     public ApiRequestSpec(ExecutionContext context, String routeKey, ApiClient apiClient) {
         this.context = context;
         this.routeKey = routeKey;
+        this.rawUri = null;
+        this.apiClient = apiClient;
+    }
+
+    public ApiRequestSpec(ExecutionContext context, URI rawUri, ApiClient apiClient) {
+        this.context = context;
+        this.routeKey = "RAW_REQUEST";
+        this.rawUri = rawUri;
         this.apiClient = apiClient;
     }
 
@@ -57,26 +82,94 @@ public class ApiRequestSpec {
     }
 
     public ValidatableResponse get() {
-        return new ValidatableResponse(execute("GET", null));
+        return new ValidatableResponse(executeWithRetry("GET", null, 0));
     }
 
     public ValidatableResponse post(Object body) {
-        return new ValidatableResponse(execute("POST", body));
+        return new ValidatableResponse(executeWithRetry("POST", body, 0));
     }
 
     public ValidatableResponse put(Object body) {
-        return new ValidatableResponse(execute("PUT", body));
+        return new ValidatableResponse(executeWithRetry("PUT", body, 0));
     }
 
     public ValidatableResponse delete() {
-        return new ValidatableResponse(execute("DELETE", null));
+        return new ValidatableResponse(executeWithRetry("DELETE", null, 0));
     }
 
-    private Response execute(String method, Object body) {
+    /**
+     * Internal execution loop handling Retries (Auth Refresh & Transient Errors).
+     */
+    private Response executeWithRetry(String method, Object body, int attempt) {
         try {
-            RouteDefinition routeDef = context.routes().get(routeKey);
+            URI targetUri = buildUri();
+            HttpRequest.Builder builder = HttpRequest.newBuilder().uri(targetUri);
+            headers.forEach(builder::header);
 
+            ObjectMapper mapper = apiClient.getMapper();
+            if (body != null) {
+                String json = mapper.writeValueAsString(body);
+                builder.header("Content-Type", "application/json");
+                builder.method(method, HttpRequest.BodyPublishers.ofString(json));
+                if (attempt == 0) StepReporter.attachJson("Request Body", json);
+            } else {
+                builder.method(method, HttpRequest.BodyPublishers.noBody());
+            }
+
+            ApiRequest initialRequest = new ApiRequest(builder.build());
+            ApiRequest authenticatedRequest = context.authChain().apply(context, initialRequest);
+            URI finalUri = authenticatedRequest.httpRequest().uri();
+
+            if (attempt == 0) {
+                StepReporter.info(String.format("Invoking: %s [%s %s]", routeKey, method, finalUri));
+            } else {
+                StepReporter.warn(String.format("RETRY [%d/%d]: %s", attempt, MAX_RETRIES, routeKey));
+            }
+
+            HttpClient client = apiClient.getNativeClient(followRedirects);
+            HttpResponse<String> httpRes = client.send(authenticatedRequest.httpRequest(),
+                    HttpResponse.BodyHandlers.ofString());
+
+            int status = httpRes.statusCode();
+
+            if (status == 401 && attempt < 1) {
+                StepReporter.warn("401 Unauthorized. Refreshing token...");
+                context.authManager().reauthenticate();
+                return executeWithRetry(method, body, attempt + 1);
+            }
+
+            if (RETRYABLE_STATUS_CODES.contains(status) && attempt < MAX_RETRIES) {
+                long backoffMillis = (long) (Math.pow(2, attempt) * 1000) + ThreadLocalRandom.current().nextInt(500);
+                StepReporter.warn(String.format("Transient Error %d. Backing off for %dms...", status, backoffMillis));
+                try {
+                    Thread.sleep(backoffMillis);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Interrupted during backoff", e);
+                }
+                return executeWithRetry(method, body, attempt + 1);
+            }
+
+            StepReporter.attachJson("Response " + status, httpRes.body());
+            return new Response(httpRes, mapper);
+
+        } catch (Exception e) {
+            throw new RuntimeException("API Execution Failed for: " + routeKey, e);
+        }
+    }
+
+    /**
+     * Constructs the target URI with Secure Path Param Injection.
+     */
+    private URI buildUri() throws Exception {
+        URI targetUri;
+
+        if (rawUri != null) {
+            targetUri = rawUri;
+        } else {
+            RouteDefinition routeDef = context.routes().get(routeKey);
             String routePath = routeDef.path();
+
             Map<String, Object> defaults = context.config().contextDefaults();
             for (Map.Entry<String, Object> entry : defaults.entrySet()) {
                 String token = "{" + entry.getKey() + "}";
@@ -84,8 +177,8 @@ public class ApiRequestSpec {
                     routePath = routePath.replace(token, String.valueOf(entry.getValue()));
                 }
             }
-            URI baseUri = context.config().domains().desktopUri(); // Default
-            
+
+            URI baseUri = context.config().domains().desktopUri();
             Map<String, String> services = context.config().services();
             if (services != null) {
                 for (String serviceName : services.keySet()) {
@@ -96,20 +189,17 @@ public class ApiRequestSpec {
                 }
             }
 
-            String basePath = baseUri.getPath();
-            if (!basePath.endsWith("/"))
-                basePath += "/";
-
             for (Map.Entry<String, String> entry : this.pathParams.entrySet()) {
-                routePath = routePath.replace("{" + entry.getKey() + "}", entry.getValue());
+                String encodedValue = URLEncoder.encode(entry.getValue(), StandardCharsets.UTF_8);
+                routePath = routePath.replace("{" + entry.getKey() + "}", encodedValue);
             }
-        
-            if (routePath.startsWith("/"))
-                routePath = routePath.substring(1);
 
+            String basePath = baseUri.getPath();
+            if (!basePath.endsWith("/")) basePath += "/";
+            if (routePath.startsWith("/")) routePath = routePath.substring(1);
             String fullPath = basePath + routePath;
 
-            URI fullUri = new URI(
+            targetUri = new URI(
                     baseUri.getScheme(),
                     baseUri.getUserInfo(),
                     baseUri.getHost(),
@@ -117,63 +207,28 @@ public class ApiRequestSpec {
                     fullPath,
                     baseUri.getQuery(),
                     baseUri.getFragment());
-
-            if (!queryParams.isEmpty()) {
-                String query = queryParams.entrySet().stream()
-                        .map(e -> URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8) + "=" +
-                                URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
-                        .collect(Collectors.joining("&"));
-
-                String existingQuery = fullUri.getQuery();
-                String newQuery = existingQuery == null ? query : existingQuery + "&" + query;
-
-                fullUri = new URI(fullUri.getScheme(), fullUri.getUserInfo(), fullUri.getHost(), fullUri.getPort(),
-                        fullUri.getPath(), newQuery, fullUri.getFragment());
-            }
-
-            HttpRequest.Builder builder = HttpRequest.newBuilder().uri(fullUri);
-
-            headers.forEach(builder::header);
-
-            ObjectMapper mapper = apiClient.getMapper();
-            if (body != null) {
-                String json = mapper.writeValueAsString(body);
-                builder.header("Content-Type", "application/json");
-                builder.method(method, HttpRequest.BodyPublishers.ofString(json));
-                StepReporter.attachJson("Request Body", json);
-            } else {
-                builder.method(method, HttpRequest.BodyPublishers.noBody());
-            }
-
-            ApiRequest initialRequest = new ApiRequest(builder.build());
-
-            ApiRequest authenticatedRequest = context.authChain().apply(context, initialRequest);
-
-            URI finalUri = authenticatedRequest.httpRequest().uri();
-
-            if (!isRetry) {
-                StepReporter.info(String.format("Invoking route: %s [%s %s]", routeKey, method, finalUri));
-            } else {
-                StepReporter.warn(String.format("RETRY route: %s [%s %s]", routeKey, method, finalUri));
-            }
-
-            HttpClient client = apiClient.getNativeClient(followRedirects);
-            HttpResponse<String> httpRes = client.send(authenticatedRequest.httpRequest(),
-                    HttpResponse.BodyHandlers.ofString());
-
-            if (httpRes.statusCode() == 401 && !isRetry) {
-                StepReporter.warn("401 Unauthorized. Refreshing token...");
-                context.authManager().reauthenticate();
-                this.isRetry = true;
-                return execute(method, body);
-            }
-
-            StepReporter.attachJson("Response " + httpRes.statusCode(), httpRes.body());
-
-            return new Response(httpRes, mapper);
-
-        } catch (Exception e) {
-            throw new RuntimeException("Execution of API Request Failed: " + routeKey, e);
         }
+
+        if (!queryParams.isEmpty()) {
+            String query = queryParams.entrySet().stream()
+                    .map(e -> URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8) + "=" +
+                            URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
+                    .collect(Collectors.joining("&"));
+
+            String existingQuery = targetUri.getQuery();
+            String newQuery = existingQuery == null ? query : existingQuery + "&" + query;
+
+            targetUri = new URI(
+                    targetUri.getScheme(),
+                    targetUri.getUserInfo(),
+                    targetUri.getHost(),
+                    targetUri.getPort(),
+                    targetUri.getPath(),
+                    newQuery,
+                    targetUri.getFragment()
+            );
+        }
+
+        return targetUri;
     }
 }

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.realmofevil.automation.engine.config.OperatorConfig;
 import dev.realmofevil.automation.engine.context.ExecutionContext;
 import dev.realmofevil.automation.engine.routing.RouteDefinition;
+import dev.realmofevil.automation.engine.security.CryptoUtil;
 import dev.realmofevil.automation.engine.util.TemplateProcessor;
 import io.qameta.allure.Allure;
 
@@ -16,7 +17,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 public final class LoginClient {
-
     private final ExecutionContext context;
     private final ObjectMapper mapper;
 
@@ -48,6 +48,19 @@ public final class LoginClient {
             accountData.put("username", account.username().plainText());
             accountData.put("password", account.password().plainText());
             accountData.put("metadata", account.metadata());
+
+            Map<String, Object> decodedMetadata = new HashMap<>();
+            if (account.metadata() != null) {
+                account.metadata().forEach((k, v) -> {
+                    if (v instanceof String s) {
+                        decodedMetadata.put(k, CryptoUtil.decodeBase64(s, true));
+                    } else {
+                        decodedMetadata.put(k, v);
+                    }
+                });
+            }
+            accountData.put("decodedMetadata", decodedMetadata);
+
             resolutionContext.put("account", accountData);
 
             if (def.payloadTemplate() == null || def.payloadTemplate().isEmpty()) {
@@ -56,7 +69,6 @@ public final class LoginClient {
 
             Object payloadObject = TemplateProcessor.process(def.payloadTemplate(), resolutionContext);
             String jsonBody = mapper.writeValueAsString(payloadObject);
-
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(loginUri)
                     .header("Content-Type", "application/json")
@@ -78,7 +90,6 @@ public final class LoginClient {
             }
 
             context.auth().setAuthToken(token);
-            
             Allure.addAttachment("Auth Success", "Token acquired for: " + account.username() + " " + token.length());
 
         } catch (Exception e) {
@@ -93,7 +104,11 @@ public final class LoginClient {
                     .orElseThrow(() -> new RuntimeException("Header not found: " + def.tokenField()));
         } else {
             JsonNode root = mapper.readTree(response.body());
-            return root.path(def.tokenField()).asText();
+            String field = def.tokenField();
+            if (field.contains(".")) {
+               return root.at("/" + field.replace(".", "/")).asText();
+            }
+            return root.path(field).asText();
         }
     }
 }

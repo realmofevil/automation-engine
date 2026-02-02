@@ -1,5 +1,6 @@
 package dev.realmofevil.automation.engine.http;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import dev.realmofevil.automation.engine.reporting.StepReporter;
 import org.junit.jupiter.api.Assertions;
 import java.util.function.Consumer;
@@ -13,7 +14,8 @@ public class ValidatableResponse {
 
     public ValidatableResponse statusCode(int expectedCode) {
         if (response.status() != expectedCode) {
-            String error = "Expected Status " + expectedCode + " but got " + response.status();
+            String error = String.format("Expected Status %d but got %d. Body: %s", expectedCode, response.status(),
+                    response.raw().body());
             StepReporter.error(error, null);
             Assertions.assertEquals(expectedCode, response.status(), error);
         }
@@ -27,6 +29,47 @@ public class ValidatableResponse {
             Assertions.fail(error + "\nBody: " + response.raw().body());
         }
         return this;
+    }
+
+    /**
+     * Checks if the response body contains "success": true.
+     * Common pattern in legacy APIs.
+     */
+    public ValidatableResponse assertSuccess() {
+        assertOk();
+        try {
+            JsonNode root = response.mapper().readTree(response.raw().body());
+            if (root.has("success")) {
+                boolean success = root.get("success").asBoolean();
+                if (!success) {
+                    String msg = root.toString();
+                    String error = "API returned logical failure (success: false).";
+                    StepReporter.error(error, null);
+                    Assertions.fail(error + " Body: " + msg);
+                }
+            } else {
+                StepReporter.warn("Response body does not contain 'success' field. Skipping logical check.");
+            }
+        } catch (Exception e) {
+        }
+        return this;
+    }
+
+    /**
+     * Replaces RestAssured: response.jsonPath().get("key")
+     * Uses JSON Pointer syntax: "/data/token"
+     */
+    public String jsonPath(String path) {
+        try {
+            JsonNode root = response.mapper().readTree(response.raw().body());
+            JsonNode node = root.at(path);
+            if (node.isMissingNode()) {
+                throw new IllegalArgumentException("JSON Path not found: " + path);
+            }
+            return node.asText();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to extract JSON path: " + path, e);
+        }
     }
 
     /**

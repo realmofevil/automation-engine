@@ -1,6 +1,7 @@
 package dev.realmofevil.automation.engine.config;
 
-import dev.realmofevil.automation.engine.security.CredentialDecoder;
+import dev.realmofevil.automation.engine.security.CryptoUtil;
+
 import java.util.Objects;
 
 /**
@@ -9,11 +10,10 @@ import java.util.Objects;
  * Responsibilities:
  * 1. Holds the encrypted/encoded value in memory.
  * 2. Prevents accidental logging via toString() masking.
- * 3. Provides explicit access to plain text via lazy decoding.
+ * 3. Provides explicit access to plain text via lazy decoding using {@link CryptoUtil}.
  * </p>
  */
 public final class Secret {
-
     private final String rawValue;
 
     /**
@@ -22,14 +22,14 @@ public final class Secret {
      * @param value The raw value from the YAML file (usually Base64).
      */
     public Secret(String value) {
-        this.rawValue = value;
+        this.rawValue = Objects.requireNonNull(value, "Secret value cannot be null");
     }
 
     /**
      * Returns the decoded plain text password/token.
      */
     public String plainText() {
-        return CredentialDecoder.decode(rawValue);
+        return CryptoUtil.decodeBase64(this.rawValue, true);
     }
 
     @Override

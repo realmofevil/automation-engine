@@ -34,7 +34,7 @@ public final class DynamicOperatorTestFactory {
     public static DynamicContainer create(OperatorExecutionPlan plan) {
         OperatorConfig op = plan.operator();
 
-        RouteCatalog routes = ConfigLoader.loadRoutes(op.routeCatalog());
+        RouteCatalog routes = ConfigLoader.loadRoutes(op.routeCatalogs());
 
         DataSource ds = DataSourceFactory.create(op.db());
         Map<String, DataSource> dataSources = Collections.singletonMap("core", ds);

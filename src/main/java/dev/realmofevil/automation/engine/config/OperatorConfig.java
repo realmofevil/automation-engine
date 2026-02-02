@@ -17,7 +17,7 @@ public record OperatorConfig(
         Map<String, DbConfig> databases,
         RabbitConfig rabbit,
         Map<String, Object> contextDefaults,
-        String routeCatalog,
+        List<String> routeCatalogs,
         int parallelism,
         List<AuthDefinition> auth) {
     public record OperatorDomains(String desktop, String mobile) {
@@ -68,6 +68,13 @@ public record OperatorConfig(
     @Override
     public Map<String, Object> contextDefaults() {
         return contextDefaults != null ? contextDefaults : Collections.emptyMap();
+    }
+
+    public OperatorConfig {
+        if (routeCatalogs == null)
+            routeCatalogs = Collections.emptyList();
+        if (contextDefaults == null)
+            contextDefaults = Collections.emptyMap();
     }
 
     public URI getServiceUri(String serviceName) {
