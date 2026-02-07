@@ -17,8 +17,6 @@ public final class Secret {
     private final String rawValue;
 
     /**
-     * Constructor used by SnakeYAML.
-     * 
      * @param value The raw value from the YAML file (usually Base64).
      */
     public Secret(String value) {

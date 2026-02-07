@@ -122,6 +122,12 @@ public class ApiRequestSpec {
 
             if (attempt == 0) {
                 StepReporter.info(String.format("Invoking: %s [%s %s]", routeKey, method, finalUri));
+                
+                StringBuilder headerLog = new StringBuilder();
+                authenticatedRequest.httpRequest().headers().map().forEach((k, v) -> 
+                    headerLog.append(String.format("  %s: %s\n", k, String.join(", ", v)))
+                );
+                StepReporter.attachText("Request Headers", headerLog.toString());
             } else {
                 StepReporter.warn(String.format("RETRY [%d/%d]: %s", attempt, MAX_RETRIES, routeKey));
             }
@@ -172,7 +178,13 @@ public class ApiRequestSpec {
 
             Map<String, Object> defaults = context.config().contextDefaults();
             for (Map.Entry<String, Object> entry : defaults.entrySet()) {
-                String token = "{" + entry.getKey() + "}";
+                String key = entry.getKey();
+
+                if (this.pathParams.containsKey(key)) {
+                    continue; 
+                }
+
+                String token = "{" + key + "}";
                 if (routePath.contains(token)) {
                     routePath = routePath.replace(token, String.valueOf(entry.getValue()));
                 }

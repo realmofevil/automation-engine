@@ -53,11 +53,13 @@ public final class ExecutionContext {
         this.txManagers = new ConcurrentHashMap<>();
         this.dbClients = new ConcurrentHashMap<>();
 
-        dataSources.forEach((key, ds) -> {
-            TransactionManager tm = new TransactionManager(ds);
-            txManagers.put(key, tm);
-            dbClients.put(key, new DbClient(tm));
-        });
+        if (dataSources != null) {
+            dataSources.forEach((key, ds) -> {
+                TransactionManager tm = new TransactionManager(ds);
+                txManagers.put(key, tm);
+                dbClients.put(key, new DbClient(tm));
+            });
+        }
 
         this.accountPool = pool;
     }
@@ -112,9 +114,10 @@ public final class ExecutionContext {
 
     public DbClient db(String name) {
         if (!dbClients.containsKey(name)) {
-            if (dbClients.size() == 1)
-                return dbClients.values().iterator().next();
-            throw new IllegalArgumentException("Database '" + name + "' not configured for this operator.");
+            throw new IllegalStateException(
+                    String.format(
+                            "Database '%s' is not available. Check if 'databases.%s' is defined in %s.yaml or if connection failed.",
+                            name, name, operatorConfig.environment()));
         }
         return dbClients.get(name);
     }

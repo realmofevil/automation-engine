@@ -14,9 +14,13 @@ public class ValidatableResponse {
 
     public ValidatableResponse statusCode(int expectedCode) {
         if (response.status() != expectedCode) {
-            String error = String.format("Expected Status %d but got %d. Body: %s", expectedCode, response.status(),
-                    response.raw().body());
+            String bodyPreview = getBodyPreview();
+            String error = String.format("API FAILURE | Status: %d (Expected: %d) | Body: %s",
+                    response.status(), expectedCode, bodyPreview);
+
             StepReporter.error(error, null);
+            StepReporter.attachJson("Failure Response Body", response.raw().body());
+
             Assertions.assertEquals(expectedCode, response.status(), error);
         }
         return this;
@@ -24,9 +28,14 @@ public class ValidatableResponse {
 
     public ValidatableResponse assertOk() {
         if (response.status() >= 400) {
-            String error = "Expected OK (2xx/3xx) but got " + response.status();
+            String bodyPreview = getBodyPreview();
+            String error = String.format("API FAILURE | Status: %d | Body: %s",
+                    response.status(), bodyPreview);
+
             StepReporter.error(error, null);
-            Assertions.fail(error + "\nBody: " + response.raw().body());
+            StepReporter.attachJson("Failure Response Body", response.raw().body());
+
+            Assertions.fail(error);
         }
         return this;
     }
@@ -39,20 +48,23 @@ public class ValidatableResponse {
         assertOk();
         try {
             JsonNode root = response.mapper().readTree(response.raw().body());
-            if (root.has("success")) {
-                boolean success = root.get("success").asBoolean();
-                if (!success) {
-                    String msg = root.toString();
-                    String error = "API returned logical failure (success: false).";
-                    StepReporter.error(error, null);
-                    Assertions.fail(error + " Body: " + msg);
-                }
+            if (root.has("success") && !root.get("success").asBoolean()) {
+                String error = "LOGICAL FAILURE | API returned 'success': false | Body: " + getBodyPreview();
+                StepReporter.error(error, null);
+                Assertions.fail(error);
             } else {
                 StepReporter.warn("Response body does not contain 'success' field. Skipping logical check.");
             }
         } catch (Exception e) {
         }
         return this;
+    }
+
+    private String getBodyPreview() {
+        String body = response.raw().body();
+        if (body == null)
+            return "null";
+        return (body.length() > 200) ? body.substring(0, 200) + "... (see attachment)" : body;
     }
 
     /**

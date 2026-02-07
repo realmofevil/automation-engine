@@ -94,7 +94,8 @@ public class ApiClient {
      * Preferred for standard API testing.
      */
     public ApiRequestSpec route(String routeKey) {
-        return new ApiRequestSpec(context, routeKey, this);
+        String ua = String.valueOf(context.config().contextDefaults().get("userAgent"));
+        return new ApiRequestSpec(context, routeKey, this).header("User-Agent", ua);
     }
 
     /**
@@ -102,7 +103,8 @@ public class ApiClient {
      * Use this when following redirects to external domains (e.g. Game Vendors).
      */
     public ApiRequestSpec url(String rawUrl) {
-        return new ApiRequestSpec(context, URI.create(rawUrl), this);
+        String ua = String.valueOf(context.config().contextDefaults().get("userAgent"));
+        return new ApiRequestSpec(context, URI.create(rawUrl), this).header("User-Agent", ua);
     }
 
     public ValidatableResponse post(String routeKey, Object body) {

@@ -21,32 +21,45 @@ import org.junit.jupiter.api.DynamicContainer;
 import org.junit.jupiter.api.DynamicTest;
 
 import javax.sql.DataSource;
+
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
 
 public final class DynamicOperatorTestFactory {
 
     private DynamicOperatorTestFactory() {}
 
     public static DynamicContainer create(OperatorExecutionPlan plan) {
-        OperatorConfig op = plan.operator();
+        try {
+            OperatorConfig op = plan.operator();
+            RouteCatalog routes = ConfigLoader.loadRoutes(op.routeCatalogs());
+            AccountPool accountPool = new AccountPool(op.accounts());
 
-        RouteCatalog routes = ConfigLoader.loadRoutes(op.routeCatalogs());
+            Map<String, DataSource> dataSources = new HashMap<>();
+            if (op.databases() != null && !op.databases().isEmpty()) {
+                op.databases().forEach((key, dbConfig) -> {
+                    try {
+                        dataSources.put(key, DataSourceFactory.create(dbConfig));
+                    } catch (Exception e) {
+                        StepReporter.warn("Failed to initialize database '" + key + "': " + e.getMessage());
+                    }
+                });
+            }
 
-        DataSource ds = DataSourceFactory.create(op.db());
-        Map<String, DataSource> dataSources = Collections.singletonMap("core", ds);
+            List<DynamicContainer> classContainers = new ArrayList<>();
+            for (SuiteDefinition.TestEntry entry : plan.tests()) {
+                classContainers.add(createClassContainer(op, routes, dataSources, accountPool, entry));
+            }
+            return DynamicContainer.dynamicContainer(op.id(), classContainers);
 
-        AccountPool accountPool = new AccountPool(op.accounts());
-
-        List<DynamicContainer> classContainers = new ArrayList<>();
-        for (SuiteDefinition.TestEntry entry : plan.tests()) {
-            classContainers.add(createClassContainer(op, routes, dataSources, accountPool, entry));
+        } catch (Exception e) {
+            StepReporter.error("Failed to initialize Operator Container [" + plan.operator().id() + "]", e);
+            throw new RuntimeException("Operator Initialization Failed: " + e.getMessage());
         }
-
-        return DynamicContainer.dynamicContainer(op.id(), classContainers);
     }
 
     private static DynamicContainer createClassContainer(
@@ -101,6 +114,8 @@ public final class DynamicOperatorTestFactory {
 
         if (lastError instanceof Exception)
             throw (Exception) lastError;
+        if (lastError instanceof Error)
+            throw (Error) lastError;
         throw new RuntimeException(lastError);
     }
 
@@ -111,7 +126,7 @@ public final class DynamicOperatorTestFactory {
             AccountPool accountPool,
             Class<?> testClass,
             Method testMethod,
-            int attempt) throws Exception {
+            int attempt) throws Throwable {
 
         ExecutionContext ctx = new ExecutionContext(op, routes, dataSources, accountPool);
         ContextHolder.set(ctx);
@@ -157,8 +172,9 @@ public final class DynamicOperatorTestFactory {
             if (txManager != null)
                 txManager.end(shouldCommit);
 
-        } catch (Exception e) {
-            StepReporter.error("!!! TEST FAILED: [" + op.id() + "] " + testName, e);
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getTargetException();
+            StepReporter.error("!!! TEST FAILED: [" + op.id() + "] " + testName + " | " + cause.getMessage(), cause);
 
             if (txManager != null) {
                 try {
@@ -166,9 +182,14 @@ public final class DynamicOperatorTestFactory {
                 } catch (Exception ignored) {
                 }
             }
-
-            if (e instanceof java.lang.reflect.InvocationTargetException) {
-                throw (Exception) e.getCause();
+            throw cause;
+        } catch (Throwable e) {
+            StepReporter.error("!!! TEST ERROR: [" + op.id() + "] " + testName + " | " + e.getMessage(), e);
+            if (txManager != null) {
+                try {
+                    txManager.end(false);
+                } catch (Exception ignored) {
+                }
             }
             throw e;
         } finally {

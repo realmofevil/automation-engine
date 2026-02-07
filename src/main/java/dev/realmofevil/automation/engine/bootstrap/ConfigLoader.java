@@ -27,7 +27,8 @@ public final class ConfigLoader {
             "device", "d",
             "languageId", 2,
             "currencyId", 4,
-            "loginType", 1);
+            "loginType", 1,
+            "userAgent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 OPR/126.0.0.0");
 
     private ConfigLoader() {}
 
@@ -73,7 +74,13 @@ public final class ConfigLoader {
             if (routes != null) {
                 for (String key : routes.keySet()) {
                     if (mergedRoutes.containsKey(key)) {
-                        LOG.warn("Route collision: '{}' in '{}' overrides previous definition.", key, fileName);
+                        String oldVal = mergedRoutes.get(key);
+                        String newVal = routes.get(key);
+                        if (!oldVal.equals(newVal)) {
+                            LOG.info("Route collision: '{}' in '{}' overrides previous definition. Old: '{}', New: '{}'", key, fileName, oldVal, newVal);
+                        } else {
+                            LOG.info("Duplicate route key '{}' in '{}' has the same value as previous definition. No override.", key, fileName);
+                        }
                     }
                 }
                 mergedRoutes.putAll(routes);
@@ -98,11 +105,11 @@ public final class ConfigLoader {
         try (InputStream is = ConfigLoader.class.getClassLoader().getResourceAsStream(path)) {
             if (is == null)
                 throw new IllegalStateException("Config file not found: " + path);
-            return YamlSupport.create(type).loadAs(is, type);
+            return YamlSupport.load(is, type);
         } catch (Exception e) {
-            String msg = "YAML PARSING ERROR: Failed to parse '" + path + "'. Check syntax indentation and field names.";
-            LOG.error(msg, e);
-            throw new RuntimeException(msg, e);
+            String msg = "YAML PARSING ERROR: Failed to parse '" + path + "'. Check syntax indentation and field names." + e.getMessage();
+            LOG.error(msg);
+            throw new RuntimeException(msg);
         }
     }
 

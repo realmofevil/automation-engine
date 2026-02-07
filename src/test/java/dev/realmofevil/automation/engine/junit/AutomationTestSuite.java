@@ -26,40 +26,46 @@ public class AutomationTestSuite {
 
     @TestFactory
     public Stream<DynamicContainer> execute() {
+        try {
+            String envName = System.getProperty("env");
+            String suiteName = System.getProperty("suite");
+            String singleTestClass = System.getProperty("test.class");
 
-        String envName = System.getProperty("env");
-        String suiteName = System.getProperty("suite");
-        String singleTestClass = System.getProperty("test.class");
+            validateContext(envName, suiteName, singleTestClass);
 
-        validateContext(envName, suiteName, singleTestClass);
+            LOG.info("Starting Automation Engine. Environment: {}, Suite: {}", envName, suiteName);
 
-        LOG.info("Starting Automation Engine. Environment: {}, Suite: {}", envName, suiteName);
+            EnvironmentConfig envConfig = ConfigLoader.loadEnv(envName);
+            SuiteDefinition suiteDef;
 
-        EnvironmentConfig envConfig = ConfigLoader.loadEnv(envName);
-        SuiteDefinition suiteDef;
+            if (singleTestClass != null && !singleTestClass.isBlank()) {
+                LOG.info(">>> SINGLE CLASS MODE: Running only '{}'", singleTestClass);
+                suiteDef = new SuiteDefinition(
+                        "Single Class Execution",
+                        List.of("ALL"),
+                        List.of(new SuiteDefinition.TestEntry(singleTestClass, Collections.emptyList())));
+            } else {
+                LOG.info("Suite: {}", suiteName);
+                suiteDef = ConfigLoader.loadSuite(suiteName);
+            }
 
-        if (singleTestClass != null && !singleTestClass.isBlank()) {
-            LOG.info(">>> SINGLE CLASS MODE: Running only '{}'", singleTestClass);
-            suiteDef = new SuiteDefinition(
-                    "Single Class Execution",
-                    List.of("ALL"),
-                    List.of(new SuiteDefinition.TestEntry(singleTestClass, Collections.emptyList())));
-        } else {
-            LOG.info("Suite: {}", suiteName);
-            suiteDef = ConfigLoader.loadSuite(suiteName);
+            List<OperatorExecutionPlan> plans = ExecutionPlanner.plan(envConfig.operators(), suiteDef);
+
+            if (plans.isEmpty()) {
+                throw new IllegalStateException(
+                        "Execution Plan is empty. Check your Environment config and Suite targets.");
+            }
+
+            return plans.stream()
+                    .map(DynamicOperatorTestFactory::create);
+
+        } catch (IllegalArgumentException | IllegalStateException e) {
+            StepReporter.error("CONFIGURATION ERROR: " + e.getMessage(), null);
+            return Stream.empty();
+        } catch (RuntimeException e) {
+            StepReporter.error("EXECUTION FAILURE: " + e.getMessage(), e);
+            throw e;
         }
-
-        // Matches the suite requirements against the available operators in the environment
-        List<OperatorExecutionPlan> plans = ExecutionPlanner.plan(envConfig.operators(), suiteDef);
-
-        if (plans.isEmpty()) {
-            throw new IllegalStateException(
-                    "Execution Plan is empty. Check your Environment config and Suite targets.");
-        }
-
-        // Generate the Test Graph and Convert the Plans into JUnit 5 Dynamic Nodes
-        return plans.stream()
-                .map(DynamicOperatorTestFactory::create);
     }
 
     private void validateContext(String env, String suite, String testClass) {

@@ -18,12 +18,14 @@ public final class SessionAuthenticationStep implements AuthenticationStep {
 
         HttpRequest original = request.httpRequest();
 
-        return ApiRequest.builder()
+        ApiRequest.Builder builder = ApiRequest.builder()
                 .uri(original.uri())
-                .headers(Map.of("Cookie", cookieHeader))
-                .method(
-                        original.method(),
-                        original.bodyPublisher().orElse(HttpRequest.BodyPublishers.noBody()))
-                .build();
+                .method(original.method(), original.bodyPublisher().orElse(HttpRequest.BodyPublishers.noBody()));
+
+        original.headers().map().forEach((k, v) -> v.forEach(val -> builder.headers(Map.of(k, val))));
+
+        builder.headers(Map.of("Cookie", cookieHeader));
+
+        return builder.build();
     }
 }
