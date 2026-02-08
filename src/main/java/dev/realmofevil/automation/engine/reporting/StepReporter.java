@@ -48,8 +48,8 @@ public final class StepReporter {
     }
 
     public static void attachJson(String title, String json) {
-        String preview = (json != null && json.length() > 100) ? json.substring(0, 100) + "..." : json;
-        LOG.info(prefix("[Attachment] {}: {}"), title, preview);
+        String preview = (json != null && json.length() > 500) ? json.substring(0, 500) + "..." : json;
+        LOG.info(prefix("[Attachment] " + title + ": " + preview));
         if (json != null) {
             Allure.addAttachment(title, "application/json", json);
         }
@@ -57,7 +57,7 @@ public final class StepReporter {
 
     public static void attachText(String title, String content) {
         String preview = (content != null && content.length() > 500) ? content.substring(0, 500) + "..." : content;
-        LOG.debug(prefix("[Attachment] " + title + ":\n" + preview));
+        LOG.info(prefix("[Attachment] " + title + ":\n" + preview));
         Allure.addAttachment(title, "text/plain", content);
     }
 }

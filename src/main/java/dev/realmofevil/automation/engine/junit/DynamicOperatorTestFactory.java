@@ -72,8 +72,14 @@ public final class DynamicOperatorTestFactory {
             Class<?> testClass = Class.forName(entry.className());
             List<DynamicTest> tests = new ArrayList<>();
 
+            String methodFilter = System.getProperty("test.method");
+
             for (Method method : testClass.getDeclaredMethods()) {
                 if (method.isAnnotationPresent(org.junit.jupiter.api.Test.class)) {
+
+                    if (methodFilter != null && !methodFilter.isBlank() && !method.getName().equals(methodFilter)) {
+                        continue; 
+                    }
                     tests.add(DynamicTest.dynamicTest(
                             method.getName(),
                             () -> executeTestLifecycle(op, routes, dataSources, accountPool, testClass, method)));

@@ -98,6 +98,19 @@ public class ApiRequestSpec {
     }
 
     /**
+     * Sends a POST request with Content-Type: application/x-www-form-urlencoded.
+     */
+    public ValidatableResponse postForm(Map<String, String> params) {
+        String formBody = params.entrySet().stream()
+                .map(e -> URLEncoder.encode(e.getKey(), StandardCharsets.UTF_8) + "=" +
+                        URLEncoder.encode(e.getValue(), StandardCharsets.UTF_8))
+                .collect(Collectors.joining("&"));
+
+        this.headers.put("Content-Type", "application/x-www-form-urlencoded");
+        return new ValidatableResponse(executeWithRetry("POST", formBody, 0));
+    }
+
+    /**
      * Internal execution loop handling Retries (Auth Refresh & Transient Errors).
      */
     private Response executeWithRetry(String method, Object body, int attempt) {
@@ -108,10 +121,26 @@ public class ApiRequestSpec {
 
             ObjectMapper mapper = apiClient.getMapper();
             if (body != null) {
-                String json = mapper.writeValueAsString(body);
-                builder.header("Content-Type", "application/json");
-                builder.method(method, HttpRequest.BodyPublishers.ofString(json));
-                if (attempt == 0) StepReporter.attachJson("Request Body", json);
+                String bodyString;
+                if (body instanceof String) {
+                    bodyString = (String) body;
+                } else {
+                    bodyString = apiClient.getMapper().writeValueAsString(body);
+                    if (!headers.containsKey("Content-Type")) {
+                        builder.header("Content-Type", "application/json");
+                    }
+                }
+                
+                builder.method(method, HttpRequest.BodyPublishers.ofString(bodyString));
+
+                if (attempt == 0) {
+                    String ct = headers.getOrDefault("Content-Type", "application/json");
+                    if (ct.contains("json")) {
+                        StepReporter.attachJson("Request Body", bodyString);
+                    } else {
+                        StepReporter.attachText("Request Body", bodyString);
+                    }
+                }
             } else {
                 builder.method(method, HttpRequest.BodyPublishers.noBody());
             }

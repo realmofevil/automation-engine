@@ -7,7 +7,7 @@
 
   <groupId>dev.realmofevil</groupId>
   <artifactId>automation</artifactId>
-  <version>0.6.10</version>
+  <version>0.6.11</version>
 
   <name>Automation Engine Skeleton</name>
   <description>A platform to execute or run suites with tests</description>
@@ -16,7 +16,6 @@
     <java.version>21</java.version>
     <junit.jupiter.version>5.10.3</junit.jupiter.version>
     <junit.platform.version>1.10.3</junit.platform.version>
-    <snakeyaml.version>2.5</snakeyaml.version>
     <jackson.version>2.21.0</jackson.version>
     <allure.version>2.32.0</allure.version>
     <slf4j-simple.version>2.0.17</slf4j-simple.version>

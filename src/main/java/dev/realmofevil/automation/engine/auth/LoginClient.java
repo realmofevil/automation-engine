@@ -78,7 +78,7 @@ public final class LoginClient {
             Object payloadObject = TemplateProcessor.process(def.payloadTemplate(), resolutionContext);
             String jsonBody = mapper.writeValueAsString(payloadObject);
             String referer = context.config().domains().desktopUri().toString();
-            String userAgent = String.valueOf(globalDefaults.getOrDefault("userAgent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 OPR/126.0.0.0"));
+            String userAgent = String.valueOf(globalDefaults.get("userAgent"));
             HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                     .uri(loginUri)
                     .header("Content-Type", "application/json")

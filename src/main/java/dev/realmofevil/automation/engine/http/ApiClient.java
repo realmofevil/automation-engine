@@ -95,7 +95,8 @@ public class ApiClient {
      */
     public ApiRequestSpec route(String routeKey) {
         String ua = String.valueOf(context.config().contextDefaults().get("userAgent"));
-        return new ApiRequestSpec(context, routeKey, this).header("User-Agent", ua);
+        String referer = context.config().domains().desktopUri().toString();
+        return new ApiRequestSpec(context, routeKey, this).header("User-Agent", ua).header("Referer", referer);
     }
 
     /**
@@ -104,7 +105,8 @@ public class ApiClient {
      */
     public ApiRequestSpec url(String rawUrl) {
         String ua = String.valueOf(context.config().contextDefaults().get("userAgent"));
-        return new ApiRequestSpec(context, URI.create(rawUrl), this).header("User-Agent", ua);
+        String referer = context.config().domains().desktopUri().toString();
+        return new ApiRequestSpec(context, URI.create(rawUrl), this).header("User-Agent", ua).header("Referer", referer);
     }
 
     public ValidatableResponse post(String routeKey, Object body) {
