@@ -21,38 +21,38 @@ import org.junit.jupiter.api.DynamicContainer;
 import org.junit.jupiter.api.DynamicTest;
 
 import javax.sql.DataSource;
-
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
 
 public final class DynamicOperatorTestFactory {
 
-    private DynamicOperatorTestFactory() {}
+    private DynamicOperatorTestFactory() {
+    }
 
-    public static DynamicContainer create(OperatorExecutionPlan plan) {
+    public static DynamicContainer create(OperatorExecutionPlan plan, String methodFilter) {
         try {
             OperatorConfig op = plan.operator();
             RouteCatalog routes = ConfigLoader.loadRoutes(op.routeCatalogs());
             AccountPool accountPool = new AccountPool(op.accounts());
 
             Map<String, DataSource> dataSources = new HashMap<>();
-            if (op.databases() != null && !op.databases().isEmpty()) {
+            if (op.databases() != null) {
                 op.databases().forEach((key, dbConfig) -> {
                     try {
                         dataSources.put(key, DataSourceFactory.create(dbConfig));
                     } catch (Exception e) {
-                        StepReporter.warn("Failed to initialize database '" + key + "': " + e.getMessage());
+                        StepReporter.warn("Skipping DB initialization '" + key + "': " + e.getMessage());
                     }
                 });
             }
 
             List<DynamicContainer> classContainers = new ArrayList<>();
             for (SuiteDefinition.TestEntry entry : plan.tests()) {
-                classContainers.add(createClassContainer(op, routes, dataSources, accountPool, entry));
+                classContainers.add(createClassContainer(op, routes, dataSources, accountPool, entry, methodFilter));
             }
             return DynamicContainer.dynamicContainer(op.id(), classContainers);
 
@@ -67,18 +67,16 @@ public final class DynamicOperatorTestFactory {
             RouteCatalog routes,
             Map<String, DataSource> dataSources,
             AccountPool accountPool,
-            SuiteDefinition.TestEntry entry) {
+            SuiteDefinition.TestEntry entry,
+            String methodFilter) {
         try {
             Class<?> testClass = Class.forName(entry.className());
             List<DynamicTest> tests = new ArrayList<>();
 
-            String methodFilter = System.getProperty("test.method");
-
             for (Method method : testClass.getDeclaredMethods()) {
                 if (method.isAnnotationPresent(org.junit.jupiter.api.Test.class)) {
-
                     if (methodFilter != null && !methodFilter.isBlank() && !method.getName().equals(methodFilter)) {
-                        continue; 
+                        continue;
                     }
                     tests.add(DynamicTest.dynamicTest(
                             method.getName(),
@@ -97,7 +95,7 @@ public final class DynamicOperatorTestFactory {
             Map<String, DataSource> dataSources,
             AccountPool accountPool,
             Class<?> testClass,
-            Method testMethod) throws Exception {
+            Method testMethod) throws Throwable {
 
         Flaky flaky = testMethod.getAnnotation(Flaky.class);
         int maxRetries = (flaky != null) ? flaky.retries() : 0;
@@ -117,12 +115,10 @@ public final class DynamicOperatorTestFactory {
                 }
             }
         }
-
-        if (lastError instanceof Exception)
-            throw (Exception) lastError;
-        if (lastError instanceof Error)
-            throw (Error) lastError;
-        throw new RuntimeException(lastError);
+        if (lastError instanceof InvocationTargetException ie) {
+            throw ie.getTargetException();
+        }
+        throw lastError;
     }
 
     private static void runSingleExecution(
@@ -136,8 +132,6 @@ public final class DynamicOperatorTestFactory {
 
         ExecutionContext ctx = new ExecutionContext(op, routes, dataSources, accountPool);
         ContextHolder.set(ctx);
-        TransactionManager txManager = ctx.transactions("core");
-
         Object testInstance = testClass.getDeclaredConstructor().newInstance();
         String testName = testClass.getSimpleName() + "." + testMethod.getName();
 
@@ -147,18 +141,16 @@ public final class DynamicOperatorTestFactory {
             Allure.label("parentSuite", op.id());
             Allure.label("suite", testClass.getSimpleName());
 
-            if (attempt > 0) {
-                StepReporter.warn(">>> START RETRY " + attempt + ": [" + op.id() + "] " + testName);
-            } else {
+            if (attempt == 0) {
                 StepReporter.info(">>> START TEST: [" + op.id() + "] " + testName);
+            } else {
+                StepReporter.warn(">>> RETRY ATTEMPT #" + attempt + " FOR TEST: [" + op.id() + "] " + testName);
             }
 
-            if (txManager != null)
-                txManager.begin();
+            ctx.getAllTransactionManagers().values().forEach(TransactionManager::begin);
 
             boolean isPublic = testMethod.isAnnotationPresent(Public.class)
                     || testClass.isAnnotationPresent(Public.class);
-
             if (!isPublic) {
                 UseAccount annotation = testMethod.getAnnotation(UseAccount.class);
                 String requestedAlias = (annotation != null) ? annotation.id() : null;
@@ -166,37 +158,33 @@ public final class DynamicOperatorTestFactory {
             } else {
                 ctx.authManager().applyTransportAuthOnly();
             }
-
             invokeLifecycleMethods(testClass, testInstance, BeforeEach.class);
-
             testMethod.setAccessible(true);
             testMethod.invoke(testInstance);
-
             invokeLifecycleMethods(testClass, testInstance, AfterEach.class);
 
             boolean shouldCommit = testMethod.isAnnotationPresent(CommitTransaction.class);
-            if (txManager != null)
-                txManager.end(shouldCommit);
+            ctx.getAllTransactionManagers().values().forEach(tm -> tm.end(shouldCommit));
 
         } catch (InvocationTargetException e) {
             Throwable cause = e.getTargetException();
             StepReporter.error("!!! TEST FAILED: [" + op.id() + "] " + testName + " | " + cause.getMessage(), cause);
 
-            if (txManager != null) {
+            ctx.getAllTransactionManagers().values().forEach(tm -> {
                 try {
-                    txManager.end(false);
+                    tm.end(false);
                 } catch (Exception ignored) {
                 }
-            }
+            });
             throw cause;
         } catch (Throwable e) {
             StepReporter.error("!!! TEST ERROR: [" + op.id() + "] " + testName + " | " + e.getMessage(), e);
-            if (txManager != null) {
+            ctx.getAllTransactionManagers().values().forEach(tm -> {
                 try {
-                    txManager.end(false);
+                    tm.end(false);
                 } catch (Exception ignored) {
                 }
-            }
+            });
             throw e;
         } finally {
             ctx.authManager().releaseAccount();

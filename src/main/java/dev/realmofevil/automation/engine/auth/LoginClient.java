@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.realmofevil.automation.engine.config.OperatorConfig;
 import dev.realmofevil.automation.engine.context.ExecutionContext;
+import dev.realmofevil.automation.engine.http.ApiRequestSpec;
 import dev.realmofevil.automation.engine.reporting.StepReporter;
 import dev.realmofevil.automation.engine.routing.RouteDefinition;
 import dev.realmofevil.automation.engine.security.CryptoUtil;
@@ -44,32 +45,31 @@ public final class LoginClient {
 
             URI loginUri = context.config().domains().desktopUri().resolve(routePath);
 
-            Map<String, Object> resolutionContext = new HashMap<>();
-
             Map<String, Object> globalDefaults = context.config().contextDefaults();
-            resolutionContext.put("context", globalDefaults);
+            Map<String, Object> accountRawMetadata = account.metadata() != null ? account.metadata() : new HashMap<>();
 
             Map<String, Object> effectiveMetadata = new HashMap<>(globalDefaults);
-            if (account.metadata() != null) {
-                effectiveMetadata.putAll(account.metadata());
-            }
+            effectiveMetadata.putAll(accountRawMetadata);
 
-            Map<String, Object> accountData = new HashMap<>();
-            accountData.put("username", account.username().plainText());
-            accountData.put("password", account.password().plainText());
-            accountData.put("metadata", effectiveMetadata);
-
-            Map<String, Object> decodedMetadata = new HashMap<>();
-            effectiveMetadata.forEach((k, v) -> {
+            Map<String, Object> decodedMetadata = new HashMap<>(globalDefaults);
+            accountRawMetadata.forEach((k, v) -> {
                 if (v instanceof String s) {
                     decodedMetadata.put(k, CryptoUtil.decodeBase64(s, true));
                 } else {
                     decodedMetadata.put(k, v);
                 }
             });
-            accountData.put("decodedMetadata", decodedMetadata);
 
-            resolutionContext.put("account", accountData);
+            Map<String, Object> resolutionContext = new HashMap<>();
+            resolutionContext.put("context", globalDefaults);
+
+            Map<String, Object> accountView = new HashMap<>();
+            accountView.put("username", account.username().plainText());
+            accountView.put("password", account.password().plainText());
+            accountView.put("metadata", effectiveMetadata);
+            accountView.put("decodedMetadata", decodedMetadata);
+
+            resolutionContext.put("account", accountView);
 
             if (def.payloadTemplate() == null || def.payloadTemplate().isEmpty()) {
                 throw new IllegalStateException("AuthDefinition missing 'payloadTemplate' in YAML.");
@@ -88,14 +88,14 @@ public final class LoginClient {
 
             String transportUser = context.auth().getTransportUser();
             String transportPass = context.auth().getTransportPassword();
-            
+
             if (transportUser != null && transportPass != null) {
                 String basicAuth = Base64.getEncoder().encodeToString(
                         (transportUser + ":" + transportPass).getBytes(StandardCharsets.UTF_8));
                 requestBuilder.header("Authorization", "Basic " + basicAuth);
             }
 
-            HttpRequest request = requestBuilder.build();            
+            HttpRequest request = requestBuilder.build();
 
             HttpClient client = context.api().getNativeClient(true);
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
@@ -120,11 +120,59 @@ public final class LoginClient {
             }
 
             context.auth().setAuthToken(token);
-            Allure.addAttachment("Auth Success", "Token acquired for: " + account.username() + " (length: " + token.length() + ", starts with: " + token.substring(0, 5) + "...)");
-
+            Allure.addAttachment("Auth Success", "Token acquired for: " + account.username() + " (length: "
+                    + token.length() + ", starts with: " + token.substring(0, 5) + "...)");
 
         } catch (Exception e) {
             throw new RuntimeException("Authentication flow failed: " + e.getMessage(), e);
+        }
+    }
+
+    public void logout(OperatorConfig.ApiAccount account) {
+        if (!context.auth().isAuthenticated())
+            return;
+
+        OperatorConfig.AuthDefinition authDef = context.config().auth().stream()
+                .filter(d -> d.type() == OperatorConfig.AuthType.LOGIN_TOKEN)
+                .findFirst()
+                .orElse(null);
+
+        if (authDef == null || authDef.logoutRoute() == null || authDef.logoutRoute().isBlank()) {
+            return;
+        }
+
+        try {
+            String routePath = authDef.logoutRoute();
+            if (!routePath.startsWith("/")) {
+                RouteDefinition routeDef = context.routes().get(routePath);
+                routePath = routeDef.path();
+            }
+            URI logoutUri = context.config().domains().desktopUri().resolve(routePath);
+
+            HttpRequest.Builder builder = HttpRequest.newBuilder()
+                    .uri(logoutUri)
+                    .GET();
+            String referer = context.config().domains().desktopUri().toString();
+            builder.header("Referer", referer);
+
+            String transportUser = context.auth().getTransportUser();
+            String transportPass = context.auth().getTransportPassword();
+            if (transportUser != null && transportPass != null) {
+                String basicAuth = Base64.getEncoder().encodeToString(
+                        (transportUser + ":" + transportPass).getBytes(StandardCharsets.UTF_8));
+                builder.header("Authorization", "Basic " + basicAuth);
+            }
+
+            String token = context.auth().getAuthToken();
+            if (token != null && authDef.tokenHeader() != null) {
+                builder.header(authDef.tokenHeader(), token);
+            }
+
+            context.api().getNativeClient(true).send(builder.build(), HttpResponse.BodyHandlers.discarding());
+            StepReporter.info("Logged out user: " + account.username().plainText().substring(0, 5) + "***");
+
+        } catch (Exception e) {
+            StepReporter.warn("Logout failed (non-critical): " + e.getMessage());
         }
     }
 
@@ -134,9 +182,9 @@ public final class LoginClient {
                     .firstValue(def.tokenField())
                     .orElseThrow(() -> new RuntimeException("Header not found: " + def.tokenField()));
         } else {
-            String field = def.tokenField(); 
+            String field = def.tokenField();
             if (field.contains(".")) {
-               return root.at("/" + field.replace(".", "/")).asText();
+                return root.at("/" + field.replace(".", "/")).asText();
             }
             return root.path(field).asText();
         }

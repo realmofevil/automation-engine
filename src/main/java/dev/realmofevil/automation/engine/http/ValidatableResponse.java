@@ -4,6 +4,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import dev.realmofevil.automation.engine.reporting.StepReporter;
 import org.junit.jupiter.api.Assertions;
 import java.util.function.Consumer;
+import org.w3c.dom.Document;
+import org.xml.sax.InputSource;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.xpath.XPath;
+import javax.xml.xpath.XPathFactory;
+import java.io.StringReader;
 
 public class ValidatableResponse {
     private final Response response;
@@ -48,12 +55,15 @@ public class ValidatableResponse {
         assertOk();
         try {
             JsonNode root = response.mapper().readTree(response.raw().body());
-            if (root.has("success") && !root.get("success").asBoolean()) {
-                String error = "LOGICAL FAILURE | API returned 'success': false | Body: " + getBodyPreview();
-                StepReporter.error(error, null);
-                Assertions.fail(error);
+            if (root.isObject() && root.has("success")) {
+                boolean success = root.get("success").asBoolean();
+                if (!success) {
+                    String error = "LOGICAL FAILURE | API returned \"success\": false | Body: " + getBodyPreview();
+                    StepReporter.error(error, null);
+                    Assertions.fail(error);
+                }
             } else {
-                StepReporter.warn("Response body does not contain 'success' field. Skipping logical check.");
+                StepReporter.warn("Response body does not contain a standard \"success\" field. Skipping logical check.");
             }
         } catch (Exception e) {
         }
@@ -72,15 +82,36 @@ public class ValidatableResponse {
      * Uses JSON Pointer syntax: "/data/token"
      */
     public String jsonPath(String path) {
+        JsonNode root;
         try {
-            JsonNode root = response.mapper().readTree(response.raw().body());
-            JsonNode node = root.at(path);
-            if (node.isMissingNode()) {
-                throw new IllegalArgumentException("JSON Path not found: " + path);
-            }
-            return node.asText();
+            root = response.mapper().readTree(response.raw().body());
         } catch (Exception e) {
-            throw new RuntimeException("Failed to extract JSON path: " + path, e);
+            throw new RuntimeException("Failed to parse response body as JSON. Body: " + getBodyPreview(), e);
+        }
+
+        JsonNode node = root.at(path);
+        if (node.isMissingNode()) {
+            throw new IllegalArgumentException(String.format("JSON Path '%s' not found in response. Body: %s", 
+                path, getBodyPreview()));
+        }
+        return node.asText();
+    }
+
+    /**
+     * Extracts a value from an XML response using XPath.
+     * Example: xmlPath("//result/token")
+     */
+    public String xmlPath(String xpathExpression) {
+        try {
+            String body = response.raw().body();
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            DocumentBuilder builder = factory.newDocumentBuilder();
+            Document doc = builder.parse(new InputSource(new StringReader(body)));
+
+            XPath xpath = XPathFactory.newInstance().newXPath();
+            return xpath.evaluate(xpathExpression, doc);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to evaluate XPath: " + xpathExpression, e);
         }
     }
 

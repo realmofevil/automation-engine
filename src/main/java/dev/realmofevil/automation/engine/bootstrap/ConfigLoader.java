@@ -140,6 +140,7 @@ public final class ConfigLoader {
 
         return new OperatorConfig(
                 specific.id(),
+                specific.siteId(),
                 specific.environment(),
                 specific.domains(),
                 specific.services() != null ? specific.services() : (defaults != null ? defaults.services() : null),
@@ -188,6 +189,7 @@ public final class ConfigLoader {
 
         return new OperatorConfig(
                 op.id(),
+                op.siteId(),
                 op.environment(),
                 domains,
                 op.services(),

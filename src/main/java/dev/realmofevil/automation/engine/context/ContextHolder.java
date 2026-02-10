@@ -15,6 +15,10 @@ public final class ContextHolder {
         return ctx;
     }
 
+    public static boolean isSet() {
+        return THREAD_LOCAL.get() != null;
+    }
+
     public static void clear() {
         THREAD_LOCAL.remove();
     }

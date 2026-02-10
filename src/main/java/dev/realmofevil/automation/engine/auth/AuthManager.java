@@ -144,9 +144,15 @@ public class AuthManager {
     public void releaseAccount() {
         OperatorConfig.ApiAccount current = context.getLeasedAccount();
         if (current != null) {
-            // Optional: Logout here if "Clean Session" is required
-            // loginClient.logout(current); BUT TESTS SHOULD BE AGN
-            // OSTIC TO THE CONTEXT AND NOT CARE ABOUT AUTH STATE, THIS IS INFRASTRUCTURE
+            // Optional: Logout here if "Clean Session" is required.
+            // BUT TESTS SHOULD BE AGNOSTIC TO THE CONTEXT AND NOT CARE ABOUT AUTH STATE, THIS IS INFRASTRUCTURE, NOT TEST LOGIC.
+            // IF LOGOUT FAILS, WE STILL WANT TO RELEASE THE ACCOUNT BACK TO THE POOL AND NOT BLOCK FUTURE TESTS.
+            try {
+                loginClient.logout(current);
+            } catch (Exception e) {
+            }
+
+            context.auth().invalidate();
 
             context.getAccountPool().release(current);
             context.setLeasedAccount(null);

@@ -7,7 +7,7 @@
 
   <groupId>dev.realmofevil</groupId>
   <artifactId>automation</artifactId>
-  <version>0.6.11</version>
+  <version>0.6.12</version>
 
   <name>Automation Engine Skeleton</name>
   <description>A platform to execute or run suites with tests</description>

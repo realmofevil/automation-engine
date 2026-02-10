@@ -1,5 +1,7 @@
 package dev.realmofevil.automation.engine.reporting;
 
+import dev.realmofevil.automation.engine.context.ContextHolder;
+
 import io.qameta.allure.Allure;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,7 +23,13 @@ public final class StepReporter {
      * Essential for distinguishing interleaved logs in parallel execution.
      */
     private static String prefix(String message) {
-        return String.format("[TID:%d] %s", Thread.currentThread().threadId(), message);
+        String operatorId = "INIT";
+        try {
+            if (ContextHolder.isSet()) {
+                operatorId = ContextHolder.get().config().id();
+            }
+        } catch (Exception ignored) {}
+        return String.format("[TID:%d|OP:%s] %s", Thread.currentThread().threadId(), operatorId, message);
     }
 
     public static void info(String message) {

@@ -44,6 +44,7 @@ public class ApiRequestSpec {
     private final ApiClient apiClient;
     private boolean followRedirects = true;
 
+    public static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
     private static final int MAX_RETRIES = 3;
     private static final Set<Integer> RETRYABLE_STATUS_CODES = Set.of(502, 503, 504);
 
@@ -116,7 +117,10 @@ public class ApiRequestSpec {
     private Response executeWithRetry(String method, Object body, int attempt) {
         try {
             URI targetUri = buildUri();
-            HttpRequest.Builder builder = HttpRequest.newBuilder().uri(targetUri);
+            long timeoutSec = 30;
+            Object cfgTimeout = context.config().contextDefaults().get("httpTimeoutSeconds");
+            if (cfgTimeout instanceof Integer i) timeoutSec = i;
+            HttpRequest.Builder builder = HttpRequest.newBuilder().uri(targetUri).timeout(Duration.ofSeconds(timeoutSec));
             headers.forEach(builder::header);
 
             ObjectMapper mapper = apiClient.getMapper();

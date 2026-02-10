@@ -21,7 +21,6 @@ import java.util.stream.Stream;
  * To run a single class: mvn test -Dtest=AutomationTestSuite -Denv=dev -Dtest.class=dev.realmofevil.automation.tests.user.LoginTest
  */
 public class AutomationTestSuite {
-
     private static final Logger LOG = LoggerFactory.getLogger(AutomationTestSuite.class);
 
     @TestFactory
@@ -29,21 +28,20 @@ public class AutomationTestSuite {
         try {
             String envName = System.getProperty("env");
             String suiteName = System.getProperty("suite");
-            String singleTestClass = System.getProperty("test.class");
-
-            validateContext(envName, suiteName, singleTestClass);
+            String testClassFilter = System.getProperty("test.class");
+            String testMethodFilter = System.getProperty("test.method");
+            validateContext(envName, suiteName, testClassFilter);
 
             LOG.info("Starting Automation Engine. Environment: {}, Suite: {}", envName, suiteName);
+            if (testMethodFilter != null) LOG.info("Filter active: Method '{}'", testMethodFilter);
 
             EnvironmentConfig envConfig = ConfigLoader.loadEnv(envName);
             SuiteDefinition suiteDef;
 
-            if (singleTestClass != null && !singleTestClass.isBlank()) {
-                LOG.info(">>> SINGLE CLASS MODE: Running only '{}'", singleTestClass);
-                suiteDef = new SuiteDefinition(
-                        "Single Class Execution",
-                        List.of("ALL"),
-                        List.of(new SuiteDefinition.TestEntry(singleTestClass, Collections.emptyList())));
+            if (testClassFilter != null && !testClassFilter.isBlank()) {
+                LOG.info(">>> SINGLE CLASS MODE: Running only '{}'", testClassFilter);
+                suiteDef = new SuiteDefinition("Single Class Execution", List.of("ALL"), 
+                        List.of(new SuiteDefinition.TestEntry(testClassFilter, Collections.emptyList())));
             } else {
                 LOG.info("Suite: {}", suiteName);
                 suiteDef = ConfigLoader.loadSuite(suiteName);
@@ -57,7 +55,7 @@ public class AutomationTestSuite {
             }
 
             return plans.stream()
-                    .map(DynamicOperatorTestFactory::create);
+                    .map(plan -> DynamicOperatorTestFactory.create(plan, testMethodFilter));
 
         } catch (IllegalArgumentException | IllegalStateException e) {
             StepReporter.error("CONFIGURATION ERROR: " + e.getMessage(), null);

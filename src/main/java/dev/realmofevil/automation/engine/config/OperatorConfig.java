@@ -10,6 +10,7 @@ import java.util.Map;
  */
 public record OperatorConfig(
         String id,
+        Integer siteId,
         String environment,
         OperatorDomains domains,
         Map<String, String> services,
@@ -50,6 +51,7 @@ public record OperatorConfig(
     public record AuthDefinition(
             AuthType type,
             String loginRoute,
+            String logoutRoute,
             Map<String, Object> payloadTemplate,
             String tokenField,
             TokenSource tokenSource,
