@@ -108,6 +108,17 @@ public final class ExecutionContext {
         return leasedAccount;
     }
 
+    /**
+     * Resolves a Service URL from configuration, ensuring trailing slash consistency.
+     */
+    public String resolveServiceUrl(String serviceKey) {
+        String url = operatorConfig.getServiceUri(serviceKey).toString();
+        if (!url.endsWith("/")) {
+            return url + "/";
+        }
+        return url;
+    }
+
     public DbClient db() {
         return db("core");
     }
@@ -116,8 +127,8 @@ public final class ExecutionContext {
         if (!dbClients.containsKey(name)) {
             throw new IllegalStateException(
                     String.format(
-                            "Database '%s' is not available. Check if 'databases.%s' is defined in %s.yaml or if connection failed.",
-                            name, name, operatorConfig.environment()));
+                            "Database '%s' is not available. Check if 'databases.%s' is defined for the \"%s\" operator or if the connection failed.",
+                            name, name, operatorConfig.id()));
         }
         return dbClients.get(name);
     }

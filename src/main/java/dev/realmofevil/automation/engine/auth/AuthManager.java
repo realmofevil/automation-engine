@@ -2,6 +2,7 @@ package dev.realmofevil.automation.engine.auth;
 
 import dev.realmofevil.automation.engine.config.OperatorConfig;
 import dev.realmofevil.automation.engine.context.ExecutionContext;
+import dev.realmofevil.automation.engine.reporting.SmartRedactor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,7 +34,8 @@ public class AuthManager {
         context.auth().setCurrentUser(account.username().plainText());
         context.auth().setPassword(account.password().plainText());
 
-        LOG.info("Initializing authentication for operator '{}' as user '{}'", config.id(), account.username());
+        String maskedUser = SmartRedactor.maskValue(account.username().plainText());
+        LOG.info("Initializing authentication for operator '{}' as user '{}'", config.id(), maskedUser);
 
         if (config.auth() != null) {
             for (OperatorConfig.AuthDefinition def : config.auth()) {
@@ -130,7 +132,7 @@ public class AuthManager {
     public void acquireAccount(String requestedAlias) {
         OperatorConfig.ApiAccount account;
 
-        if (requestedAlias != null) {
+        if (requestedAlias != null && !requestedAlias.isBlank()) {
             account = context.getAccountPool().leaseSpecific(requestedAlias);
         } else {
             account = context.getAccountPool().leaseAny();

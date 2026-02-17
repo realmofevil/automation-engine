@@ -16,6 +16,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
@@ -42,11 +43,13 @@ public class ApiRequestSpec {
     private final Map<String, String> queryParams = new LinkedHashMap<>();
     private final Map<String, String> headers = new HashMap<>();
     private final ApiClient apiClient;
+
     private boolean followRedirects = true;
 
-    public static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
+    private static final Set<String> TRACING_HEADERS = Set.of("log_correlation_id", "x-atmosphere-tracking-id");
     private static final int MAX_RETRIES = 3;
     private static final Set<Integer> RETRYABLE_STATUS_CODES = Set.of(502, 503, 504);
+    public static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
 
     public ApiRequestSpec(ExecutionContext context, String routeKey, ApiClient apiClient) {
         this.context = context;
@@ -117,10 +120,23 @@ public class ApiRequestSpec {
     private Response executeWithRetry(String method, Object body, int attempt) {
         try {
             URI targetUri = buildUri();
-            long timeoutSec = 30;
+            long timeoutSec = DEFAULT_TIMEOUT.toSeconds();
             Object cfgTimeout = context.config().contextDefaults().get("httpTimeoutSeconds");
-            if (cfgTimeout instanceof Integer i) timeoutSec = i;
-            HttpRequest.Builder builder = HttpRequest.newBuilder().uri(targetUri).timeout(Duration.ofSeconds(timeoutSec));
+            if (cfgTimeout != null) {
+                try {
+                    timeoutSec = Long.parseLong(String.valueOf(cfgTimeout));
+                } catch (NumberFormatException e) {
+                    StepReporter.warn("Invalid httpTimeoutSeconds config: " + cfgTimeout + ". Using default.");
+                }
+            }
+
+            HttpRequest.Builder builder = HttpRequest.newBuilder()
+                    .uri(targetUri)
+                    .timeout(Duration.ofSeconds(timeoutSec));
+
+            String traceId = UUID.randomUUID().toString();
+            builder.header("X-Automation-Trace-ID", traceId);
+
             headers.forEach(builder::header);
 
             ObjectMapper mapper = apiClient.getMapper();
@@ -129,12 +145,12 @@ public class ApiRequestSpec {
                 if (body instanceof String) {
                     bodyString = (String) body;
                 } else {
-                    bodyString = apiClient.getMapper().writeValueAsString(body);
+                    bodyString = mapper.writeValueAsString(body);
                     if (!headers.containsKey("Content-Type")) {
                         builder.header("Content-Type", "application/json");
                     }
                 }
-                
+
                 builder.method(method, HttpRequest.BodyPublishers.ofString(bodyString));
 
                 if (attempt == 0) {
@@ -170,6 +186,12 @@ public class ApiRequestSpec {
                     HttpResponse.BodyHandlers.ofString());
 
             int status = httpRes.statusCode();
+
+            httpRes.headers().map().forEach((k, v) -> {
+                if (TRACING_HEADERS.contains(k.toLowerCase())) {
+                    StepReporter.info("Server Trace [" + k + "]: " + String.join(", ", v));
+                }
+            });
 
             if (status == 401 && attempt < 1) {
                 StepReporter.warn("401 Unauthorized. Refreshing token...");
@@ -212,10 +234,7 @@ public class ApiRequestSpec {
             Map<String, Object> defaults = context.config().contextDefaults();
             for (Map.Entry<String, Object> entry : defaults.entrySet()) {
                 String key = entry.getKey();
-
-                if (this.pathParams.containsKey(key)) {
-                    continue; 
-                }
+                if (this.pathParams.containsKey(key)) continue;
 
                 String token = "{" + key + "}";
                 if (routePath.contains(token)) {

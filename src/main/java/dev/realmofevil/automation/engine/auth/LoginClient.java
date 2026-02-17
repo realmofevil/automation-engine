@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.realmofevil.automation.engine.config.OperatorConfig;
 import dev.realmofevil.automation.engine.context.ExecutionContext;
 import dev.realmofevil.automation.engine.http.ApiRequestSpec;
+import dev.realmofevil.automation.engine.reporting.SmartRedactor;
 import dev.realmofevil.automation.engine.reporting.StepReporter;
 import dev.realmofevil.automation.engine.routing.RouteDefinition;
 import dev.realmofevil.automation.engine.security.CryptoUtil;
@@ -120,8 +121,10 @@ public final class LoginClient {
             }
 
             context.auth().setAuthToken(token);
+            String maskedToken = SmartRedactor.maskValue(token);
+            StepReporter.info("Token acquired for header \"" + def.tokenField() + "\": " + maskedToken);
             Allure.addAttachment("Auth Success", "Token acquired for: " + account.username() + " (length: "
-                    + token.length() + ", starts with: " + token.substring(0, 5) + "...)");
+                    + token.length() + ", value: " + maskedToken + ")");
 
         } catch (Exception e) {
             throw new RuntimeException("Authentication flow failed: " + e.getMessage(), e);
@@ -169,7 +172,8 @@ public final class LoginClient {
             }
 
             context.api().getNativeClient(true).send(builder.build(), HttpResponse.BodyHandlers.discarding());
-            StepReporter.info("Logged out user: " + account.username().plainText().substring(0, 5) + "***");
+            String maskedUser = SmartRedactor.maskValue(account.username().plainText());
+            StepReporter.info("Logged out user: " + maskedUser);
 
         } catch (Exception e) {
             StepReporter.warn("Logout failed (non-critical): " + e.getMessage());

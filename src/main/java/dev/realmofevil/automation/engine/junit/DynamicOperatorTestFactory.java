@@ -11,10 +11,12 @@ import dev.realmofevil.automation.engine.context.ExecutionContext;
 import dev.realmofevil.automation.engine.db.DataSourceFactory;
 import dev.realmofevil.automation.engine.db.TransactionManager;
 import dev.realmofevil.automation.engine.db.annotations.CommitTransaction;
+import dev.realmofevil.automation.engine.execution.HealthCheck;
 import dev.realmofevil.automation.engine.execution.OperatorExecutionPlan;
 import dev.realmofevil.automation.engine.reporting.StepReporter;
 import dev.realmofevil.automation.engine.routing.RouteCatalog;
 import io.qameta.allure.Allure;
+import org.opentest4j.TestAbortedException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DynamicContainer;
@@ -24,6 +26,7 @@ import javax.sql.DataSource;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,11 +76,31 @@ public final class DynamicOperatorTestFactory {
             Class<?> testClass = Class.forName(entry.className());
             List<DynamicTest> tests = new ArrayList<>();
 
+            boolean classDisabled = testClass.isAnnotationPresent(org.junit.jupiter.api.Disabled.class);
+            String classReason = classDisabled ? testClass.getAnnotation(org.junit.jupiter.api.Disabled.class).value()
+                    : "";
+
             for (Method method : testClass.getDeclaredMethods()) {
                 if (method.isAnnotationPresent(org.junit.jupiter.api.Test.class)) {
+
                     if (methodFilter != null && !methodFilter.isBlank() && !method.getName().equals(methodFilter)) {
                         continue;
                     }
+
+                    if (classDisabled) {
+                        tests.add(DynamicTest.dynamicTest(method.getName(), () -> {
+                            throw new TestAbortedException("Class @Disabled: " + classReason);
+                        }));
+                        continue;
+                    }
+                    if (method.isAnnotationPresent(org.junit.jupiter.api.Disabled.class)) {
+                        String reason = method.getAnnotation(org.junit.jupiter.api.Disabled.class).value();
+                        tests.add(DynamicTest.dynamicTest(method.getName(), () -> {
+                            throw new TestAbortedException("Method @Disabled: " + reason);
+                        }));
+                        continue;
+                    }
+
                     tests.add(DynamicTest.dynamicTest(
                             method.getName(),
                             () -> executeTestLifecycle(op, routes, dataSources, accountPool, testClass, method)));
@@ -132,6 +155,7 @@ public final class DynamicOperatorTestFactory {
 
         ExecutionContext ctx = new ExecutionContext(op, routes, dataSources, accountPool);
         ContextHolder.set(ctx);
+
         Object testInstance = testClass.getDeclaredConstructor().newInstance();
         String testName = testClass.getSimpleName() + "." + testMethod.getName();
 
@@ -147,17 +171,27 @@ public final class DynamicOperatorTestFactory {
                 StepReporter.warn(">>> RETRY ATTEMPT #" + attempt + " FOR TEST: [" + op.id() + "] " + testName);
             }
 
+            ctx.authManager().applyTransportAuthOnly();
+
             ctx.getAllTransactionManagers().values().forEach(TransactionManager::begin);
+
+            HealthCheck.verify(ctx);
 
             boolean isPublic = testMethod.isAnnotationPresent(Public.class)
                     || testClass.isAnnotationPresent(Public.class);
+
             if (!isPublic) {
                 UseAccount annotation = testMethod.getAnnotation(UseAccount.class);
+
+                if (annotation == null) {
+                    annotation = testClass.getAnnotation(UseAccount.class);
+                }
+
                 String requestedAlias = (annotation != null) ? annotation.id() : null;
+
                 ctx.authManager().acquireAccount(requestedAlias);
-            } else {
-                ctx.authManager().applyTransportAuthOnly();
             }
+
             invokeLifecycleMethods(testClass, testInstance, BeforeEach.class);
             testMethod.setAccessible(true);
             testMethod.invoke(testInstance);

@@ -27,7 +27,8 @@ public class ConsoleSummaryListener extends SummaryGeneratingListener {
         LOG.info("Total Tests Found: " + summary.getTestsFoundCount());
         LOG.info("Total Passed:      " + summary.getTestsSucceededCount());
         LOG.info("Total Failed:      " + summary.getTestsFailedCount());
-        LOG.info("Total Skipped:     " + summary.getTestsSkippedCount());
+        long totalSkipped = summary.getTestsSkippedCount() + summary.getTestsAbortedCount();
+        LOG.info("Total Skipped:     " + totalSkipped);
         LOG.info("Time Elapsed:      " + (summary.getTimeFinished() - summary.getTimeStarted()) + "ms");
 
         if (summary.getTestsFailedCount() > 0) {

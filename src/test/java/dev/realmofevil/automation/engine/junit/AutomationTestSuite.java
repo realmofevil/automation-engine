@@ -30,21 +30,44 @@ public class AutomationTestSuite {
             String suiteName = System.getProperty("suite");
             String testClassFilter = System.getProperty("test.class");
             String testMethodFilter = System.getProperty("test.method");
+
             validateContext(envName, suiteName, testClassFilter);
 
             LOG.info("Starting Automation Engine. Environment: {}, Suite: {}", envName, suiteName);
-            if (testMethodFilter != null) LOG.info("Filter active: Method '{}'", testMethodFilter);
+            if (testMethodFilter != null)
+                LOG.info("Filter active: Method '{}'", testMethodFilter);
 
             EnvironmentConfig envConfig = ConfigLoader.loadEnv(envName);
             SuiteDefinition suiteDef;
 
+            Object timeoutObj = null;
+            if (envConfig.defaults() != null && envConfig.defaults().contextDefaults() != null) {
+                timeoutObj = envConfig.defaults().contextDefaults().get("testTimeoutSeconds");
+            }
+            String timeout = timeoutObj != null ? String.valueOf(timeoutObj) : "600";
+
+            System.setProperty("junit.jupiter.execution.timeout.default", timeout + " s");
+            LOG.info("Global Test Timeout set to: {} seconds", timeout);
+
             if (testClassFilter != null && !testClassFilter.isBlank()) {
+                String target = System.getProperty("operator", "ALL");
+                List<String> targets = target.equalsIgnoreCase("ALL") ? List.of("ALL") : List.of(target.split(","));
+
                 LOG.info(">>> SINGLE CLASS MODE: Running only '{}'", testClassFilter);
-                suiteDef = new SuiteDefinition("Single Class Execution", List.of("ALL"), 
+                suiteDef = new SuiteDefinition("Single Class Execution", targets,
                         List.of(new SuiteDefinition.TestEntry(testClassFilter, Collections.emptyList())));
             } else {
                 LOG.info("Suite: {}", suiteName);
                 suiteDef = ConfigLoader.loadSuite(suiteName);
+                String operatorOverride = System.getProperty("operator");
+                if (operatorOverride != null && !operatorOverride.isBlank()) {
+                    List<String> targets = operatorOverride.equalsIgnoreCase("ALL")
+                            ? List.of("ALL")
+                            : List.of(operatorOverride.split(","));
+
+                    LOG.info("CLI Override: Executing suite against operators: {}", targets);
+                    suiteDef = new SuiteDefinition(suiteDef.name(), targets, suiteDef.tests());
+                }
             }
 
             List<OperatorExecutionPlan> plans = ExecutionPlanner.plan(envConfig.operators(), suiteDef);

@@ -10,7 +10,7 @@ import java.util.Map;
  */
 public record OperatorConfig(
         String id,
-        Integer siteId,
+        Integer tenantId,
         String environment,
         OperatorDomains domains,
         Map<String, String> services,

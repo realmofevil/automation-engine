@@ -67,7 +67,7 @@ public final class ConfigLoader {
         for (String fileName : fileNames) {
             String path = "routes/" + fileName;
             validateResourceExists(path, "Route File");
-            // LOG.debug("Loading route catalog from: {}", path);
+            LOG.info("Loading route catalog from: {}", path);
             Map<String, Object> raw = loadInternal(path, Map.class);
             Map<String, String> routes = (Map<String, String>) raw.get("routes");
 
@@ -85,6 +85,11 @@ public final class ConfigLoader {
                 }
                 mergedRoutes.putAll(routes);
             }
+        }
+        if (mergedRoutes.isEmpty()) {
+            LOG.warn("No routes were loaded! API tests relying on route keys will fail.");
+        } else {
+            LOG.info("Loaded {} routes from {} catalogs.", mergedRoutes.size(), fileNames.size());
         }
         return new RouteCatalog(mergedRoutes);
     }
@@ -118,8 +123,10 @@ public final class ConfigLoader {
      * Employs strict null and empty collection checks.
      */
     private static OperatorConfig mergeDefaults(OperatorConfig specific, OperatorConfig defaults) {
-        Map<String, Object> mergedContext = new HashMap<>(SYSTEM_DEFAULTS);
+        Integer finalTenantId = specific.tenantId() != null ? specific.tenantId() : 
+                                 (defaults != null ? defaults.tenantId() : null);
 
+        Map<String, Object> mergedContext = new HashMap<>(SYSTEM_DEFAULTS);
         if (defaults != null && defaults.contextDefaults() != null)
             mergedContext.putAll(defaults.contextDefaults());
         if (specific.contextDefaults() != null)
@@ -140,7 +147,7 @@ public final class ConfigLoader {
 
         return new OperatorConfig(
                 specific.id(),
-                specific.siteId(),
+                finalTenantId,
                 specific.environment(),
                 specific.domains(),
                 specific.services() != null ? specific.services() : (defaults != null ? defaults.services() : null),
@@ -172,6 +179,9 @@ public final class ConfigLoader {
 
         int parallelism = Integer.getInteger(prefix + ".parallelism", op.parallelism());
 
+        String pIdOverride = System.getProperty("operator." + op.id() + ".tenantId");
+        Integer tenantId = (pIdOverride != null) ? Integer.parseInt(pIdOverride) : op.tenantId();
+
         String desktop = System.getProperty(prefix + ".domain.desktop");
 
         OperatorConfig.OperatorDomains domains = op.domains();
@@ -189,7 +199,7 @@ public final class ConfigLoader {
 
         return new OperatorConfig(
                 op.id(),
-                op.siteId(),
+                tenantId,
                 op.environment(),
                 domains,
                 op.services(),

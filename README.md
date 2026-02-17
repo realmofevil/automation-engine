@@ -1,4 +1,4 @@
-# Kandra v0.6.12
+# Kandra v0.6.13
 Kandra is an Automation Engine and Enterprise-grade API automation framework.
 
 
