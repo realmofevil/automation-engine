@@ -6,70 +6,45 @@ import dev.realmofevil.automation.engine.config.OperatorConfig;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.*;
+import java.util.Comparator;
 import java.util.Properties;
 import java.util.stream.Stream;
 
 public class AllureLifecycleManager {
 
-    private static final Path RESULTS = Path.of("target/allure-results");
-    private static final Path HISTORY = Path.of("allure-history");
-
-    private static final Path[] REPORT_HISTORY_SOURCES = {
-        Path.of("target/site/allure-maven-plugin/history"),
-        Path.of("allure-report/history")
-    };
+    private static final Path RESULTS_DIR = Path.of(System.getProperty("allure.results.directory", "target/allure-results"));
+    private static final Path HISTORY_DIR = Path.of("allure-history");
 
     public static void restoreHistory() {
-        if (!Files.exists(HISTORY)) return;
+        if (!Files.exists(HISTORY_DIR)) return;
+
+        Path targetHistory = RESULTS_DIR.resolve("history");
 
         try {
-            Path resultsHistory = RESULTS.resolve("history");
-            Files.createDirectories(resultsHistory);
-
-            try (Stream<Path> files = Files.walk(HISTORY)) {
-                files.filter(Files::isRegularFile)
-                     .forEach(src -> {
-                         try {
-                             Files.copy(src, resultsHistory.resolve(HISTORY.relativize(src)), StandardCopyOption.REPLACE_EXISTING);
-                         } catch (IOException e) {
-                             StepReporter.warn("Failed to copy history file: " + src);
-                         }
-                     });
+            if (Files.exists(RESULTS_DIR) && !Files.isWritable(RESULTS_DIR)) {
+                StepReporter.warn("Cannot restore history: Results directory is read-only.");
+                return;
             }
-            StepReporter.info("Restored Allure history from " + HISTORY.toAbsolutePath());
+
+            Files.createDirectories(targetHistory);
+
+            try (Stream<Path> files = Files.walk(HISTORY_DIR)) {
+                files.filter(Files::isRegularFile)
+                     .forEach(src -> copySafely(src, targetHistory.resolve(HISTORY_DIR.relativize(src))));
+            }
+            StepReporter.info("Restored Allure history from " + HISTORY_DIR.toAbsolutePath());
+
         } catch (IOException e) {
-            StepReporter.warn("Could not restore Allure history: " + e.getMessage());
+            StepReporter.warn("Failed to restore Allure history: " + e.getMessage());
         }
     }
 
-    /**
-     * Persists history from the generated report back to the project root.
-     * Useful for local runs to maintain trend data across 'mvn clean' executions.
-     */
-    public static void saveHistory() {
-        for (Path source : REPORT_HISTORY_SOURCES) {
-            if (Files.exists(source) && Files.isDirectory(source)) {
-                try {
-                    Files.createDirectories(HISTORY);
-                    
-                    try (Stream<Path> files = Files.walk(source)) {
-                        files.filter(Files::isRegularFile)
-                             .forEach(src -> {
-                                 try {
-                                     Files.copy(src, HISTORY.resolve(source.relativize(src)), StandardCopyOption.REPLACE_EXISTING);
-                                 } catch (IOException e) {
-                                     StepReporter.warn("Failed to save history file: " + src);
-                                 }
-                             });
-                    }
-                    StepReporter.info("Saved Allure history from " + source + " to " + HISTORY);
-                    return;
-                } catch (IOException e) {
-                    StepReporter.warn("Failed to save Allure history: " + e.getMessage());
-                }
-            }
+    private static void copySafely(Path src, Path dest) {
+        try {
+            Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            StepReporter.warn("Failed to copy history file: " + src.getFileName());
         }
-        StepReporter.info("No generated report history found to save. (Run 'mvn allure:report' first)");
     }
 
     public static void writeEnvironment(EnvironmentConfig env, String suiteName) {
@@ -77,21 +52,37 @@ public class AllureLifecycleManager {
         props.setProperty("Environment", env.name());
         props.setProperty("Suite", suiteName == null ? "Unknown" : suiteName);
         props.setProperty("Java Version", System.getProperty("java.version"));
+        props.setProperty("OS", System.getProperty("os.name"));
 
-        // List Operators
         StringBuilder ops = new StringBuilder();
         for (OperatorConfig op : env.operators()) {
-            ops.append(op.id()).append(", ");
+            ops.append(op.id()).append(" ");
         }
         props.setProperty("Operators", ops.toString());
 
         try {
-            Files.createDirectories(RESULTS);
-            try (FileOutputStream fos = new FileOutputStream(RESULTS.resolve("environment.properties").toFile())) {
-                props.store(fos, "Allure Environment");
+            Files.createDirectories(RESULTS_DIR);
+            try (FileOutputStream fos = new FileOutputStream(RESULTS_DIR.resolve("environment.properties").toFile())) {
+                props.store(fos, "Allure Environment Info");
             }
         } catch (IOException e) {
-            StepReporter.warn("Failed to write Allure environment properties.");
+            StepReporter.warn("Failed to write Allure environment.properties: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Clean results directory before run to avoid mixing history.
+     */
+    public static void cleanResults() {
+        if (Files.exists(RESULTS_DIR)) {
+            try (Stream<Path> walk = Files.walk(RESULTS_DIR)) {
+                walk.sorted(Comparator.reverseOrder())
+                    .forEach(path -> {
+                        try { Files.delete(path); } catch (IOException ignored) {}
+                    });
+            } catch (IOException e) {
+                StepReporter.warn("Could not clean old results: " + e.getMessage());
+            }
         }
     }
 }

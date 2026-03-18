@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
@@ -23,12 +24,15 @@ import java.util.stream.Collectors;
  */
 public final class ConfigLoader {
     private static final Logger LOG = LoggerFactory.getLogger(ConfigLoader.class);
+
     private static final Map<String, Object> SYSTEM_DEFAULTS = Map.of(
             "device", "d",
             "languageId", 2,
             "currencyId", 4,
             "loginType", 1,
             "userAgent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 OPR/126.0.0.0");
+
+    private static final Map<String, RouteCatalog> ROUTE_CACHE = new ConcurrentHashMap<>();
 
     private ConfigLoader() {}
 
@@ -58,16 +62,24 @@ public final class ConfigLoader {
 
     @SuppressWarnings("unchecked")
     public static RouteCatalog loadRoutes(List<String> fileNames) {
-        Map<String, String> mergedRoutes = new HashMap<>();
-
         if (fileNames == null || fileNames.isEmpty()) {
-            return new RouteCatalog(mergedRoutes);
+            return new RouteCatalog(new HashMap<>());
         }
+
+        String cacheKey = String.join(",", fileNames);
+
+        if (ROUTE_CACHE.containsKey(cacheKey)) {
+            LOG.debug("Using cached route catalog for: [{}]", cacheKey);
+            return ROUTE_CACHE.get(cacheKey);
+        }
+
+        Map<String, String> mergedRoutes = new HashMap<>();
 
         for (String fileName : fileNames) {
             String path = "routes/" + fileName;
             validateResourceExists(path, "Route File");
             LOG.info("Loading route catalog from: {}", path);
+
             Map<String, Object> raw = loadInternal(path, Map.class);
             Map<String, String> routes = (Map<String, String>) raw.get("routes");
 
@@ -86,12 +98,17 @@ public final class ConfigLoader {
                 mergedRoutes.putAll(routes);
             }
         }
+
         if (mergedRoutes.isEmpty()) {
             LOG.warn("No routes were loaded! API tests relying on route keys will fail.");
         } else {
             LOG.info("Loaded {} routes from {} catalogs.", mergedRoutes.size(), fileNames.size());
         }
-        return new RouteCatalog(mergedRoutes);
+
+        RouteCatalog finalCatalog = new RouteCatalog(mergedRoutes);
+        ROUTE_CACHE.put(cacheKey, finalCatalog);
+        
+        return finalCatalog;
     }
 
     private static void validateResourceExists(String path, String configType) {
@@ -123,27 +140,67 @@ public final class ConfigLoader {
      * Employs strict null and empty collection checks.
      */
     private static OperatorConfig mergeDefaults(OperatorConfig specific, OperatorConfig defaults) {
-        Integer finalTenantId = specific.tenantId() != null ? specific.tenantId() : 
-                                 (defaults != null ? defaults.tenantId() : null);
+        String opId = specific.id();
 
         Map<String, Object> mergedContext = new HashMap<>(SYSTEM_DEFAULTS);
-        if (defaults != null && defaults.contextDefaults() != null)
+        if (defaults != null && defaults.contextDefaults() != null) {
             mergedContext.putAll(defaults.contextDefaults());
-        if (specific.contextDefaults() != null)
-            mergedContext.putAll(specific.contextDefaults());
+        }
+        if (specific.contextDefaults() != null) {
+            specific.contextDefaults().forEach((k, v) -> {
+                if (mergedContext.containsKey(k) && !mergedContext.get(k).equals(v)) {
+                    LOG.info("[{}] Override Context: '{}' -> '{}' (was '{}')", opId, k, v, mergedContext.get(k));
+                }
+                mergedContext.put(k, v);
+            });
+        }
 
         List<String> mergedRoutes = new ArrayList<>();
-        if (defaults != null && defaults.routeCatalogs() != null)
+        if (defaults != null && defaults.routeCatalogs() != null) {
             mergedRoutes.addAll(defaults.routeCatalogs());
-        if (specific.routeCatalogs() != null)
-            mergedRoutes.addAll(specific.routeCatalogs());
+        }
+        if (specific.routeCatalogs() != null) {
+            specific.routeCatalogs().forEach(route -> {
+                if (!mergedRoutes.contains(route)) {
+                    LOG.info("[{}] Adding Specific Route Catalog: '{}'", opId, route);
+                    mergedRoutes.add(route);
+                }
+            });
+        }
 
-        int finalParallelism = specific.parallelism() > 0 ? specific.parallelism()
-                : (defaults != null && defaults.parallelism() > 0 ? defaults.parallelism() : 1);
+        Map<String, OperatorConfig.ApiAccount> mergedAccounts = new HashMap<>();
+        if (defaults != null && defaults.accounts() != null) {
+            mergedAccounts.putAll(defaults.accounts());
+        }
+        if (specific.accounts() != null) {
+            specific.accounts().forEach((k, v) -> {
+                if (mergedAccounts.containsKey(k)) {
+                    LOG.info("[{}] Override Account: '{}'", opId, k);
+                }
+                mergedAccounts.put(k, v);
+            });
+        }
 
-        List<OperatorConfig.AuthDefinition> finalAuth = (specific.auth() != null && !specific.auth().isEmpty())
-                ? specific.auth()
-                : (defaults != null ? defaults.auth() : null);
+        List<OperatorConfig.AuthDefinition> finalAuth;
+        if (specific.auth() != null && !specific.auth().isEmpty()) {
+            LOG.info("[{}] Override Auth Chain: Using operator-specific authentication strategy.", opId);
+            finalAuth = specific.auth();
+        } else {
+            finalAuth = (defaults != null) ? defaults.auth() : null;
+        }
+
+        Integer finalTenantId = specific.tenantId() != null ? specific.tenantId() : 
+                               (defaults != null ? defaults.tenantId() : null);
+
+        int finalParallelism;
+        if (specific.parallelism() > 0) {
+            if (defaults != null && defaults.parallelism() > 0 && specific.parallelism() != defaults.parallelism()) {
+                LOG.info("[{}] Override Parallelism: {} (was {})", opId, specific.parallelism(), defaults.parallelism());
+            }
+            finalParallelism = specific.parallelism();
+        } else {
+            finalParallelism = (defaults != null && defaults.parallelism() > 0) ? defaults.parallelism() : 1;
+        }
 
         return new OperatorConfig(
                 specific.id(),
@@ -151,7 +208,7 @@ public final class ConfigLoader {
                 specific.environment(),
                 specific.domains(),
                 specific.services() != null ? specific.services() : (defaults != null ? defaults.services() : null),
-                specific.accounts(),
+                mergedAccounts,
                 specific.databases() != null ? specific.databases() : (defaults != null ? defaults.databases() : null),
                 specific.rabbit() != null ? specific.rabbit() : (defaults != null ? defaults.rabbit() : null),
                 mergedContext,

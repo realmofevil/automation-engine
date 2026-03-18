@@ -1,3 +1,0 @@
-routes:
-  payment.lockBalance: "/api/balance/lock"
-  user.profile: "/api/user/profile"
