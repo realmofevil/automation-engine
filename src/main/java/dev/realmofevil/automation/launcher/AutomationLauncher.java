@@ -40,7 +40,6 @@ public class AutomationLauncher {
 
         String envName = System.getProperty("env");
         String suiteName = System.getProperty("suite");
-        String methodFilter = System.getProperty("test.method");
 
         if (envName == null || suiteName == null) {
             LOG.error("Usage: java -jar automation.jar --env=<env> --suite=<suite> [options]");

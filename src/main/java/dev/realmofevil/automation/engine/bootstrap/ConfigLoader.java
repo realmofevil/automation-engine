@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 
 /**
  * Central loading point for all YAML configurations.
- * Handles classpath resource resolution, validation, and CLI overrides.
+ * Handles classpath resource resolution, deep merging, caching, and CLI overrides.
  */
 public final class ConfigLoader {
     private static final Logger LOG = LoggerFactory.getLogger(ConfigLoader.class);
@@ -40,9 +40,11 @@ public final class ConfigLoader {
         if (envName == null || envName.isBlank()) {
             throw new IllegalArgumentException("Environment name cannot be null. Provide --env argument.");
         }
+
         String path = "env/" + envName + ".yaml";
         validateResourceExists(path, "Environment");
         LOG.info("Loading environment configuration from: {}", path);
+
         EnvironmentConfig raw = loadInternal(path, EnvironmentConfig.class);
 
         List<OperatorConfig> mergedOperators = raw.operators().stream()
@@ -107,7 +109,6 @@ public final class ConfigLoader {
 
         RouteCatalog finalCatalog = new RouteCatalog(mergedRoutes);
         ROUTE_CACHE.put(cacheKey, finalCatalog);
-        
         return finalCatalog;
     }
 
@@ -136,8 +137,8 @@ public final class ConfigLoader {
     }
 
     /**
-     * Merges global defaults into specific operator config.
-     * Employs strict null and empty collection checks.
+     * Merges global defaults into a specific operator config.
+     * Employs strict null/empty checks and structured audit logging for deep observability.
      */
     private static OperatorConfig mergeDefaults(OperatorConfig specific, OperatorConfig defaults) {
         String opId = specific.id();
@@ -236,21 +237,21 @@ public final class ConfigLoader {
 
         int parallelism = Integer.getInteger(prefix + ".parallelism", op.parallelism());
 
-        String pIdOverride = System.getProperty("operator." + op.id() + ".tenantId");
+        String pIdOverride = System.getProperty(prefix + ".tenantId");
         Integer tenantId = (pIdOverride != null) ? Integer.parseInt(pIdOverride) : op.tenantId();
 
         String desktop = System.getProperty(prefix + ".domain.desktop");
 
         OperatorConfig.OperatorDomains domains = op.domains();
         if (desktop != null) {
-            LOG.info("Override [{}] Desktop URL: {}", op.id(), desktop);
+            LOG.info("CLI Override [{}] Desktop URL: {}", op.id(), desktop);
             domains = new OperatorConfig.OperatorDomains(desktop, op.domains().mobile());
         }
 
         String routesOverride = System.getProperty(prefix + ".routeCatalogs");
         List<String> routeCatalogs = op.routeCatalogs();
         if (routesOverride != null && !routesOverride.isBlank()) {
-            LOG.info("Override [{}] Routes: {}", op.id(), routesOverride);
+            LOG.info("CLI Override [{}] Routes: {}", op.id(), routesOverride);
             routeCatalogs = Arrays.asList(routesOverride.split(","));
         }
 

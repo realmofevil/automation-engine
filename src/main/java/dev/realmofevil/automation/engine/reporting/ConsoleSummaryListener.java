@@ -36,8 +36,17 @@ public class ConsoleSummaryListener extends SummaryGeneratingListener {
             LOG.info("FAILED TESTS:");
             summary.getFailures().forEach(failure -> {
                 String testName = failure.getTestIdentifier().getDisplayName();
-                String error = failure.getException().getMessage();
-                LOG.error(" -> " + testName + " | Reason: " + error, failure.getException());
+                Throwable ex = failure.getException();
+
+                String errorMsg = ex.getMessage() != null ? ex.getMessage() : ex.getClass().getSimpleName();
+
+                errorMsg = errorMsg.replace("\r", "").replace("\n", " ");
+
+                if (errorMsg.length() > 150) {
+                    errorMsg = errorMsg.substring(0, 147) + "...";
+                }
+
+                LOG.error(" -> {} | Reason: {}", testName, errorMsg);
             });
             LOG.info("-----------------------------------------");
         }

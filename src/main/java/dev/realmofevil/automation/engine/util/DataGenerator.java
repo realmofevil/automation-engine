@@ -21,7 +21,7 @@ public final class DataGenerator {
     }
 
     /**
-     * Generates a random alphanumeric string.
+     * Generates a random alphanumeric string. (A-Z, a-z, 0-9).
      * Useful for unique usernames or transaction references.
      */
     public static String randomString(int length) {

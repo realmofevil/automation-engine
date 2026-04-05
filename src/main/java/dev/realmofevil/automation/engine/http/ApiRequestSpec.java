@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -46,11 +47,11 @@ public class ApiRequestSpec {
 
     private boolean followRedirects = true;
 
-    private static final Set<String> TRACING_HEADERS = Set.of("log_correlation_id", "x-atmosphere-tracking-id");
     private static final int MAX_RETRIES = 3;
     private static final Set<Integer> RETRYABLE_STATUS_CODES = Set.of(502, 503, 504);
     public static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(30);
 
+    private static final Set<String> TRACING_HEADERS = Set.of("log_correlation_id", "x-atmosphere-tracking-id");
     public ApiRequestSpec(ExecutionContext context, String routeKey, ApiClient apiClient) {
         this.context = context;
         this.routeKey = routeKey;
@@ -118,8 +119,9 @@ public class ApiRequestSpec {
      * Internal execution loop handling Retries (Auth Refresh & Transient Errors).
      */
     private Response executeWithRetry(String method, Object body, int attempt) {
+        URI targetUri = null;
         try {
-            URI targetUri = buildUri();
+            targetUri = buildUri();
             long timeoutSec = DEFAULT_TIMEOUT.toSeconds();
             Object cfgTimeout = context.config().contextDefaults().get("httpTimeoutSeconds");
             if (cfgTimeout != null) {
@@ -171,9 +173,9 @@ public class ApiRequestSpec {
 
             if (attempt == 0) {
                 StepReporter.info(String.format("Invoking: %s [%s %s]", routeKey, method, finalUri));
-                
+
                 StringBuilder headerLog = new StringBuilder();
-                authenticatedRequest.httpRequest().headers().map().forEach((k, v) -> 
+                authenticatedRequest.httpRequest().headers().map().forEach((k, v) ->
                     headerLog.append(String.format("  %s: %s\n", k, String.join(", ", v)))
                 );
                 StepReporter.attachText("Request Headers", headerLog.toString());
@@ -188,7 +190,7 @@ public class ApiRequestSpec {
             int status = httpRes.statusCode();
 
             httpRes.headers().map().forEach((k, v) -> {
-                if (TRACING_HEADERS.contains(k.toLowerCase())) {
+                if (TRACING_HEADERS.contains(k.toLowerCase(Locale.ROOT))) {
                     StepReporter.info("Server Trace [" + k + "]: " + String.join(", ", v));
                 }
             });
@@ -211,11 +213,17 @@ public class ApiRequestSpec {
                 return executeWithRetry(method, body, attempt + 1);
             }
 
-            StepReporter.attachJson("Response " + status, httpRes.body());
+            if (attempt == 0 || status < 400) {
+                StepReporter.attachJson("Response " + status, httpRes.body());
+            }
             return new Response(httpRes, mapper);
 
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Test execution interrupted while waiting on API: " + routeKey, e);
+
         } catch (Exception e) {
-            throw new RuntimeException("API Execution Failed for: " + routeKey, e);
+            throw NetworkExceptionTranslator.translate(e, targetUri, "API Route: " + routeKey);
         }
     }
 

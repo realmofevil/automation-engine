@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.realmofevil.automation.engine.config.OperatorConfig;
 import dev.realmofevil.automation.engine.context.ExecutionContext;
-import dev.realmofevil.automation.engine.http.ApiRequestSpec;
+import dev.realmofevil.automation.engine.http.NetworkExceptionTranslator;
 import dev.realmofevil.automation.engine.reporting.SmartRedactor;
 import dev.realmofevil.automation.engine.reporting.StepReporter;
 import dev.realmofevil.automation.engine.routing.RouteDefinition;
@@ -21,6 +21,10 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * Handles application-level session acquisition (Login) and termination (Logout).
+ * Bypasses the standard AuthenticationChain to prevent circular dependencies.
+ */
 public final class LoginClient {
     private final ExecutionContext context;
     private final ObjectMapper mapper;
@@ -31,20 +35,21 @@ public final class LoginClient {
     }
 
     public void login(OperatorConfig.ApiAccount account, OperatorConfig.AuthDefinition def) {
-        Allure.step("Authenticating as " + account.username().plainText() + " via " + def.type(), () -> {
+        String maskedUser = SmartRedactor.maskValue(account.username().plainText());
+        Allure.step("Authenticating as " + maskedUser + " via " + def.type(), () -> {
             performLoginRequest(account, def);
         });
     }
 
     private void performLoginRequest(OperatorConfig.ApiAccount account, OperatorConfig.AuthDefinition def) {
+		URI loginUri = null;
         try {
             String routePath = def.loginRoute();
             if (!routePath.startsWith("/")) {
                 RouteDefinition routeDef = context.routes().get(routePath);
                 routePath = routeDef.path();
             }
-
-            URI loginUri = context.config().domains().desktopUri().resolve(routePath);
+            loginUri = context.config().domains().desktopUri().resolve(routePath);
 
             Map<String, Object> globalDefaults = context.config().contextDefaults();
             Map<String, Object> accountRawMetadata = account.metadata() != null ? account.metadata() : new HashMap<>();
@@ -78,6 +83,7 @@ public final class LoginClient {
 
             Object payloadObject = TemplateProcessor.process(def.payloadTemplate(), resolutionContext);
             String jsonBody = mapper.writeValueAsString(payloadObject);
+
             String referer = context.config().domains().desktopUri().toString();
             String userAgent = String.valueOf(globalDefaults.get("userAgent"));
             HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
@@ -89,7 +95,6 @@ public final class LoginClient {
 
             String transportUser = context.auth().getTransportUser();
             String transportPass = context.auth().getTransportPassword();
-
             if (transportUser != null && transportPass != null) {
                 String basicAuth = Base64.getEncoder().encodeToString(
                         (transportUser + ":" + transportPass).getBytes(StandardCharsets.UTF_8));
@@ -98,39 +103,71 @@ public final class LoginClient {
 
             HttpRequest request = requestBuilder.build();
 
-            HttpClient client = context.api().getNativeClient(true);
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response;
+            try {
+                HttpClient client = context.api().getNativeClient(true);
+                response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            } catch (Exception e) {
+                throw NetworkExceptionTranslator.translate(e, loginUri, "Authentication Login Request");
+            }
 
             StepReporter.attachJson("Login Response", response.body());
 
-            if (response.statusCode() >= 400) {
-                throw new RuntimeException(
-                        "Login failed. Status: " + response.statusCode() + " Body: " + response.body());
+            String rawBody = response.body();
+            String cleanBody = (rawBody == null || rawBody.isBlank()) 
+                    ? "<empty>" 
+                    : rawBody.replace("\r", "").replace("\n", " ").replace("\t", " ");
+
+            int status = response.statusCode();
+            if (status == 401 || status == 403) {
+                throw new RuntimeException("AUTHENTICATION REJECTED: The server returned " + status + ". Check if the Base64 credentials in YAML are correct for user: " + account.username().plainText() + ". Body: " + cleanBody);
+            }
+            if (status == 502 || status == 503 || status == 504) {
+                throw new RuntimeException("AUTH SERVICE DOWN: The Gateway returned " + status + ". The backend authentication service is currently unreachable.");
+            }
+            if (status >= 400) {
+                throw new RuntimeException("LOGIN FAILED: Unexpected HTTP " + status + " | Body: " + cleanBody);
             }
 
-            JsonNode root = mapper.readTree(response.body());
+            JsonNode root;
+            try {
+                root = mapper.readTree(response.body());
+            } catch (Exception e) {
+                throw new RuntimeException("LOGIN FORMAT ERROR: Expected JSON token response, but received HTML or malformed data. Body: " + cleanBody, e);
+            }
+
             if (root.has("success") && !root.get("success").asBoolean()) {
-                throw new RuntimeException("Login Logic Failed: " + response.body());
+                throw new RuntimeException("LOGIN LOGIC FAILED: API returned success=false. Credentials might be blocked or invalid. Body: " + cleanBody);
             }
 
-            String token = extractToken(response, root, def);
+            String token;
+            try {
+                token = extractToken(response, root, def);
+            } catch (Exception e) {
+                throw new RuntimeException("TOKEN EXTRACTION FAILED: Could not find token using field '" + def.tokenField() + "'. Has the API contract changed?", e);
+            }
 
             if (token == null || token.isBlank()) {
-                throw new RuntimeException(
-                        "Auth token not found using source: " + def.tokenSource() + " and field: " + def.tokenField());
+                throw new RuntimeException("TOKEN EXTRACTION FAILED: Token field '" + def.tokenField() + "' was found but is empty, using source '" + def.tokenSource() + "'.");
             }
 
             context.auth().setAuthToken(token);
             String maskedToken = SmartRedactor.maskValue(token);
             StepReporter.info("Token acquired for header \"" + def.tokenField() + "\": " + maskedToken);
-            Allure.addAttachment("Auth Success", "Token acquired for: " + account.username() + " (length: "
+            Allure.addAttachment("Auth Success", "Token acquired for: " + SmartRedactor.maskValue(account.username().plainText()) + " (length: "
                     + token.length() + ", value: " + maskedToken + ")");
 
+        } catch (RuntimeException e) {
+            StepReporter.error("Authentication Flow Failed", null);
+            throw e;
         } catch (Exception e) {
-            throw new RuntimeException("Authentication flow failed: " + e.getMessage(), e);
+            throw new RuntimeException("Authentication Flow Failed due to unexpected error: " + e.getMessage(), e);
         }
     }
 
+    /**
+     * Terminate session gracefully if supported by the operator context.
+     */
     public void logout(OperatorConfig.ApiAccount account) {
         if (!context.auth().isAuthenticated())
             return;
@@ -152,12 +189,14 @@ public final class LoginClient {
             }
             URI logoutUri = context.config().domains().desktopUri().resolve(routePath);
 
+            String referer = context.config().domains().desktopUri().toString();
+            String userAgent = String.valueOf(context.config().contextDefaults().get("userAgent"));
+
             HttpRequest.Builder builder = HttpRequest.newBuilder()
                     .uri(logoutUri)
+                    .header("Referer", referer)
+                    .header("User-Agent", userAgent)
                     .GET();
-            String referer = context.config().domains().desktopUri().toString();
-            builder.header("Referer", referer);
-
             String transportUser = context.auth().getTransportUser();
             String transportPass = context.auth().getTransportPassword();
             if (transportUser != null && transportPass != null) {
@@ -167,11 +206,22 @@ public final class LoginClient {
             }
 
             String token = context.auth().getAuthToken();
-            if (token != null && authDef.tokenHeader() != null) {
-                builder.header(authDef.tokenHeader(), token);
+            if (token != null) {
+                String headerName = "Authorization";
+                String headerValue = "Bearer " + token;
+
+                if (authDef.tokenHeader() != null && !authDef.tokenHeader().isBlank()) {
+                    headerName = authDef.tokenHeader();
+                    if (!"Authorization".equalsIgnoreCase(headerName)) {
+                        headerValue = token;
+                    }
+                }
+                
+                builder.header(headerName, headerValue);
             }
 
             context.api().getNativeClient(true).send(builder.build(), HttpResponse.BodyHandlers.discarding());
+
             String maskedUser = SmartRedactor.maskValue(account.username().plainText());
             StepReporter.info("Logged out user: " + maskedUser);
 

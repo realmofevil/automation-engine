@@ -6,6 +6,9 @@ import io.qameta.allure.Allure;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
+
 /**
  * Facade for all reporting activities.
  * Ensures consistent output to both SLF4J (CLI/CI) and Allure (HTML).
@@ -29,6 +32,7 @@ public final class StepReporter {
                 operatorId = ContextHolder.get().config().id();
             }
         } catch (Exception ignored) {}
+
         return String.format("[TID:%d|OP:%s] %s", Thread.currentThread().threadId(), operatorId, message);
     }
 
@@ -51,14 +55,25 @@ public final class StepReporter {
     }
 
     public static void error(String message, Throwable t) {
-        LOG.error(prefix(message), t);
+        LOG.error(prefix(message));
         Allure.step("ERROR: " + message);
+
+        if (t != null) {
+            StringWriter sw = new StringWriter();
+            PrintWriter pw = new PrintWriter(sw);
+            t.printStackTrace(pw);
+
+            Allure.addAttachment("Exception Stacktrace", "text/plain", sw.toString());
+        }
     }
 
     public static void attachJson(String title, String json) {
         if (json == null) return;
         String safeContent = SmartRedactor.mask(json);
-        String preview = (safeContent.length() > 500) ? safeContent.substring(0, 500) + "..." : safeContent;
+
+        String singleLineContent = safeContent.replace("\r", "").replace("\n", " ").replace("\t", " ");
+        String preview = (singleLineContent.length() > 200) ? singleLineContent.substring(0, 197) + "..." : singleLineContent;
+
         LOG.info(prefix("[Attachment] " + title + ": " + preview));
         Allure.addAttachment(title, "application/json", safeContent);
     }
@@ -66,7 +81,9 @@ public final class StepReporter {
     public static void attachText(String title, String content) {
         if (content == null) return;
         String safeContent = SmartRedactor.mask(content);
-        String preview = (safeContent.length() > 500) ? safeContent.substring(0, 500) + "..." : safeContent;
+
+        String preview = (safeContent.length() > 500) ? safeContent.substring(0, 497) + "..." : safeContent;
+
         LOG.info(prefix("[Attachment] " + title + ":\n" + preview));
         Allure.addAttachment(title, "text/plain", safeContent);
     }

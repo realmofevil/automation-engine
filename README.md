@@ -1,14 +1,15 @@
-# Kandra v0.6.14
-Kandra is an Automation Engine and Enterprise-grade API automation framework.
+# Kandra v0.7.1
+Kandra is an Enterprise-grade platform-agnostic Automation Engine. Built for multi-tenant and multi-environment tests.
 
+Hexagonal-inspired architecture, decoupling Engine (HTTP, Auth, DB, Config) from Domain Logic (Clients, Steps, Asserts).
 
-
-Java 21, JUnit 5, native HttpClient.
+Pure Java 25, JUnit 5, native HttpClient.
+No dependency bloat. No RestAssured. No TestNG.
 
 Multi-Tenant Operator-site-first, YAML-driven API automation.
 
 
-- [x] Java 21 features
+- [x] Java 25 features
 
 - [x] Parallel execution
 

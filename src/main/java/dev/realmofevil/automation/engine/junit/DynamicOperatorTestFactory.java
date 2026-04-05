@@ -16,26 +16,32 @@ import dev.realmofevil.automation.engine.execution.OperatorExecutionPlan;
 import dev.realmofevil.automation.engine.reporting.StepReporter;
 import dev.realmofevil.automation.engine.routing.RouteCatalog;
 import io.qameta.allure.Allure;
-import org.opentest4j.TestAbortedException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DynamicContainer;
 import org.junit.jupiter.api.DynamicTest;
+import org.opentest4j.TestAbortedException;
 
 import javax.sql.DataSource;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Dynamically generates a JUnit 5 test graph based on the YAML configuration.
+ * Handles the complete lifecycle for each test (Auth, DB Transactions, Retries).
+ */
 public final class DynamicOperatorTestFactory {
 
     private DynamicOperatorTestFactory() {
     }
 
+    /**
+     * Generates a test container for a specific operator.
+     */
     public static DynamicContainer create(OperatorExecutionPlan plan, String methodFilter) {
         try {
             OperatorConfig op = plan.operator();
@@ -43,12 +49,12 @@ public final class DynamicOperatorTestFactory {
             AccountPool accountPool = new AccountPool(op.accounts());
 
             Map<String, DataSource> dataSources = new HashMap<>();
-            if (op.databases() != null) {
+            if (op.databases() != null && !op.databases().isEmpty()) {
                 op.databases().forEach((key, dbConfig) -> {
                     try {
                         dataSources.put(key, DataSourceFactory.create(dbConfig));
                     } catch (Exception e) {
-                        StepReporter.warn("Skipping DB initialization '" + key + "': " + e.getMessage());
+                        StepReporter.warn("[" + op.id() + "] Skipping DB '" + key + "': " + e.getMessage());
                     }
                 });
             }
@@ -61,10 +67,13 @@ public final class DynamicOperatorTestFactory {
 
         } catch (Exception e) {
             StepReporter.error("Failed to initialize Operator Container [" + plan.operator().id() + "]", e);
-            throw new RuntimeException("Operator Initialization Failed: " + e.getMessage());
+            throw new RuntimeException("Operator Initialization Failed: " + e.getMessage(), e);
         }
     }
 
+    /**
+     * Inspects a Test Class and generates Dynamic Tests for its methods.
+     */
     private static DynamicContainer createClassContainer(
             OperatorConfig op,
             RouteCatalog routes,
@@ -93,6 +102,7 @@ public final class DynamicOperatorTestFactory {
                         }));
                         continue;
                     }
+
                     if (method.isAnnotationPresent(org.junit.jupiter.api.Disabled.class)) {
                         String reason = method.getAnnotation(org.junit.jupiter.api.Disabled.class).value();
                         tests.add(DynamicTest.dynamicTest(method.getName(), () -> {
@@ -107,11 +117,15 @@ public final class DynamicOperatorTestFactory {
                 }
             }
             return DynamicContainer.dynamicContainer(testClass.getSimpleName(), tests);
+
         } catch (ClassNotFoundException e) {
             throw new RuntimeException("Test class not found: " + entry.className(), e);
         }
     }
 
+    /**
+     * Wraps the test execution with Flaky retry logic.
+     */
     private static void executeTestLifecycle(
             OperatorConfig op,
             RouteCatalog routes,
@@ -144,6 +158,9 @@ public final class DynamicOperatorTestFactory {
         throw lastError;
     }
 
+    /**
+     * Executes a single attempt of a test method with full context management.
+     */
     private static void runSingleExecution(
             OperatorConfig op,
             RouteCatalog routes,
@@ -190,6 +207,8 @@ public final class DynamicOperatorTestFactory {
                 String requestedAlias = (annotation != null) ? annotation.id() : null;
 
                 ctx.authManager().acquireAccount(requestedAlias);
+            } else {
+                StepReporter.info("Public test - skipping application authentication.");
             }
 
             invokeLifecycleMethods(testClass, testInstance, BeforeEach.class);
@@ -224,7 +243,7 @@ public final class DynamicOperatorTestFactory {
             ctx.authManager().releaseAccount();
             ctx.closeResources();
             ContextHolder.clear();
-            StepReporter.info("<<< END TEST:   [" + op.id() + "] " + testName);
+            StepReporter.info("<<< END TEST: [" + op.id() + "] " + testName);
         }
     }
 

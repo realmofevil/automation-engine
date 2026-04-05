@@ -101,7 +101,7 @@ public class ApiClient {
 
     /**
      * Starts a request based on a Raw/Absolute URL.
-     * Use this when following redirects to external domains (e.g. Game Vendors).
+     * Use this when following redirects to external domains (e.g. Vendor integrations).
      */
     public ApiRequestSpec url(String rawUrl) {
         String ua = String.valueOf(context.config().contextDefaults().get("userAgent"));
